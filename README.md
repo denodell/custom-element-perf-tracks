@@ -2,7 +2,7 @@
 
 Shows your web components in the Chrome DevTools Performance panel.
 
-![The Chrome DevTools Performance panel with a "Web Components" track group. A Lit update bar is selected, and the summary shows its duration, how many changes were batched, which property changed, and how long it waited.](docs/devtools.png)
+![The Chrome DevTools Performance panel with a "Web Components" track group. The Upgrade track shows one wide bar for defining demo-card, and the Lifecycle track below it shows a bar for each element as it upgrades. The summary reports 20 elements upgraded in 60.5 ms.](docs/devtools-upgrade.png)
 
 React 19.2 added its own tracks to the Performance panel, so React developers can see which component rendered and how long it took. Web components had no equivalent. This library fills that gap for custom elements, Lit and Stencil, using Chrome's [Performance Extensibility API](https://developer.chrome.com/docs/devtools/performance/extension).
 
@@ -61,6 +61,8 @@ Each bar covers Lit's whole update: `shouldUpdate`, `willUpdate`, `render` and w
 - **waited before update**: the time between the first change and the update starting.
 
 Updates that `shouldUpdate` skips appear as light "update skipped" bars, and updates that throw appear as red "update failed" bars.
+
+![A Lit update bar selected on the Updates track. The summary shows a 25 ms update, one change batched, the changed property "count", and the wait before the update.](docs/devtools-lit.png)
 
 The adapter only uses Lit's public API and has no runtime dependency on Lit. It is tested with Lit 3, and should also work with Lit 2.
 
