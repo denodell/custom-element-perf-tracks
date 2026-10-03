@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>custom-element-perf-tracks demo</title>
+<script type="importmap">
+{
+  "imports": {
+    "lit": "/node_modules/lit/index.js",
+    "lit/": "/node_modules/lit/",
+    "lit-html": "/node_modules/lit-html/lit-html.js",
+    "lit-html/": "/node_modules/lit-html/",
+    "lit-element/": "/node_modules/lit-element/",
+    "@lit/reactive-element": "/node_modules/@lit/reactive-element/reactive-element.js",
+    "@lit/reactive-element/": "/node_modules/@lit/reactive-element/"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fafafa; --card: #fff; --line: #ddd; --muted: #666; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #eee; --bg: #161616; --card: #202020; --line: #333; --muted: #999; } }
+  body { font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 24px 16px 64px; }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 20px; }
+  ol { padding-left: 20px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 16px 0; }
+  h2 { font-size: 16px; margin: 0 0 4px; }
+  .track { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  #stage { display: none; }
+  #log { font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; color: var(--muted); max-height: 200px; overflow: auto; }
+  code { font-size: 0.92em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>custom-element-perf-tracks</h1>
+  <p class="lede">Each button does some component work. The library draws that work as bars in the Chrome DevTools Performance panel.</p>
+
+  <ol>
+    <li>Open DevTools and go to the <b>Performance</b> panel.</li>
+    <li>Press record, click a few buttons below, then stop.</li>
+    <li>Look for a group called <b>Web Components</b> with <b>Lifecycle</b>, <b>Upgrade</b> and <b>Updates</b> tracks.</li>
+  </ol>
+
+  <section>
+    <h2>Plain custom element</h2>
+    <p class="track">Feeds the Upgrade and Lifecycle tracks, via <code>definePerf</code></p>
+    <div class="buttons">
+      <button id="v-define">Define (upgrades 20 elements)</button>
+      <button id="v-add">Add one</button>
+      <button id="v-attr">Change an attribute</button>
+      <button id="v-remove">Remove all</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Lit element</h2>
+    <p class="track">Feeds the Updates track, via <code>trackLitUpdates</code></p>
+    <div class="buttons">
+      <button id="l-one">Change once</button>
+      <button id="l-five">Change 5 times (Lit renders once)</button>
+      <button id="l-heavy">Slow render</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Stencil (simulated)</h2>
+    <p class="track">Feeds the Updates track, via <code>observeStencilProfile</code></p>
+    <div class="buttons">
+      <button id="s-cycle">Fake a Stencil update</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <div id="log">Nothing yet.</div>
+  </section>
+
+  <div id="stage"></div>
+</main>
+
+<script type="module">
+  import { definePerf } from "../dist/index.js";
+  import { observeStencilProfile } from "../dist/adapters/stencil.js";
+  import { trackLitUpdates } from "../dist/adapters/lit.js";
+  import { LitElement, html } from "lit";
+
+  const stage = document.getElementById("stage");
+  const logEl = document.getElementById("log");
+  let logged = false;
+  function log(line) {
+    if (!logged) { logEl.textContent = ""; logged = true; }
+    logEl.textContent = line + "\n" + logEl.textContent;
+  }
+  // Busy-wait so the bars are wide enough to spot.
+  function work(ms) { const end = performance.now() + ms; while (performance.now() < end) {} }
+
+  // Mirror our own entries into the log. The real output is in DevTools.
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      const d = e.detail?.devtools;
+      if (d) log(`${d.track.padEnd(9)} ${e.name}  ${e.duration.toFixed(1)} ms`);
+    }
+  }).observe({ type: "measure" });
+
+  // --- Plain custom element ---------------------------------------------
+  class DemoCard extends HTMLElement {
+    static observedAttributes = ["label"];
+    connectedCallback() { work(2); this.textContent = this.getAttribute("label") ?? "card"; }
+    disconnectedCallback() { work(0.5); }
+    attributeChangedCallback() { work(1); }
+  }
+  for (let i = 0; i < 20; i++) {
+    const el = document.createElement("demo-card");
+    el.setAttribute("label", `card ${i}`);
+    stage.append(el);
+  }
+  document.getElementById("v-define").onclick = (e) => {
+    if (customElements.get("demo-card")) return log("demo-card is already defined. Reload to try again.");
+    definePerf("demo-card", DemoCard);
+    e.target.disabled = true;
+  };
+  document.getElementById("v-add").onclick = () => {
+    const el = document.createElement("demo-card");
+    el.setAttribute("label", "new card");
+    stage.append(el);
+  };
+  document.getElementById("v-attr").onclick = () => {
+    stage.querySelector("demo-card")?.setAttribute("label", `changed ${Date.now() % 1000}`);
+  };
+  document.getElementById("v-remove").onclick = () => stage.replaceChildren();
+
+  // --- Lit element ------------------------------------------------------
+  class DemoCounter extends LitElement {
+    static properties = { count: { type: Number } };
+    constructor() { super(); this.count = 0; this.slow = false; trackLitUpdates(this); }
+    render() {
+      if (this.slow) { work(25); this.slow = false; } // plain field, so no extra render
+      return html`<span>${this.count}</span>`;
+    }
+  }
+  customElements.define("demo-counter", DemoCounter);
+  const counter = document.createElement("demo-counter");
+  stage.append(counter);
+
+  document.getElementById("l-one").onclick = () => { counter.count++; };
+  document.getElementById("l-five").onclick = () => { for (let i = 0; i < 5; i++) counter.count++; };
+  document.getElementById("l-heavy").onclick = () => { counter.slow = true; counter.count++; };
+
+  // --- Stencil (simulated) ----------------------------------------------
+  // Writes measures in the same format Stencil's --profile build does.
+  observeStencilProfile();
+  document.getElementById("s-cycle").onclick = () => {
+    for (const [fn, ms] of [["scheduleUpdate", 1], ["render", 6], ["postUpdate", 1]]) {
+      const start = performance.now();
+      work(ms);
+      performance.measure(`[Stencil] ${fn}() <fake-stencil-widget>`, { start, end: performance.now() });
+    }
+  };
+</script>
+</body>
+</html>

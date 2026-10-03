@@ -1,0 +1,62 @@
+{
+  "name": "custom-element-perf-tracks",
+  "version": "0.1.0",
+  "description": "Shows your web components in the Chrome DevTools Performance panel, as their own custom tracks.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Den Odell",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/denodell/custom-element-perf-tracks.git"
+  },
+  "keywords": [
+    "web-components",
+    "custom-elements",
+    "lit",
+    "stencil",
+    "performance",
+    "devtools",
+    "chrome-devtools",
+    "performance-tracks"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./lit": {
+      "types": "./dist/adapters/lit.d.ts",
+      "default": "./dist/adapters/lit.js"
+    },
+    "./stencil": {
+      "types": "./dist/adapters/stencil.d.ts",
+      "default": "./dist/adapters/stencil.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "demo": "npm run build && npx --yes serve -l 5173 ."
+  },
+  "peerDependencies": {
+    "lit": ">=2"
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "lit": "^3.3.3",
+    "typescript": "^5.9.0"
+  }
+}
