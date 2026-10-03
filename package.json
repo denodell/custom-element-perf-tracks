@@ -34,7 +34,8 @@
     "./stencil": {
       "types": "./dist/adapters/stencil.d.ts",
       "default": "./dist/adapters/stencil.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -48,7 +49,7 @@
     "demo": "npm run build && npx --yes serve -l 5173 ."
   },
   "peerDependencies": {
-    "lit": ">=2"
+    "lit": ">=2 <4"
   },
   "peerDependenciesMeta": {
     "lit": {
@@ -56,7 +57,12 @@
     }
   },
   "devDependencies": {
+    "@paulirish/trace_engine": "^0.0.65",
     "lit": "^3.3.3",
+    "puppeteer-core": "^25.12.0",
     "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

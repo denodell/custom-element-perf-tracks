@@ -44,8 +44,9 @@
   <ol>
     <li>Open DevTools and go to the <b>Performance</b> panel.</li>
     <li>Press record, click a few buttons below, then stop.</li>
-    <li>Look for a group called <b>Web Components</b> with <b>Lifecycle</b>, <b>Upgrade</b> and <b>Updates</b> tracks.</li>
+    <li>Look for a group called <b>Web Components</b> with <b>Lifecycle</b>, <b>Upgrade</b> and <b>Updates</b> tracks. Click a bar to see its details.</li>
   </ol>
+  <p class="lede">Bars have details by default. Add <code>?strategy=timestamp</code> to the address for the lighter mode, which has no details and no log below.</p>
 
   <section>
     <h2>Plain custom element</h2>
@@ -63,7 +64,7 @@
     <p class="track">Feeds the Updates track, via <code>trackLitUpdates</code></p>
     <div class="buttons">
       <button id="l-one">Change once</button>
-      <button id="l-five">Change 5 times (Lit renders once)</button>
+      <button id="l-five">Change 5 times (Lit updates once)</button>
       <button id="l-heavy">Slow render</button>
     </div>
   </section>
@@ -85,10 +86,14 @@
 </main>
 
 <script type="module">
-  import { definePerf } from "../dist/index.js";
+  import { definePerf, configure } from "../dist/index.js";
   import { observeStencilProfile } from "../dist/adapters/stencil.js";
   import { trackLitUpdates } from "../dist/adapters/lit.js";
   import { LitElement, html } from "lit";
+
+  // Add ?strategy=timestamp to the URL to try the lighter console.timeStamp mode.
+  const strategy = new URLSearchParams(location.search).get("strategy") === "timestamp" ? "timestamp" : "measure";
+  configure({ strategy });
 
   const stage = document.getElementById("stage");
   const logEl = document.getElementById("log");
@@ -140,7 +145,9 @@
     static properties = { count: { type: Number } };
     constructor() { super(); this.count = 0; this.slow = false; trackLitUpdates(this); }
     render() {
-      if (this.slow) { work(25); this.slow = false; } // plain field, so no extra render
+      // 1ms so every bar is wide enough to draw; "slow" is a plain field, so no extra update.
+      work(this.slow ? 25 : 1);
+      this.slow = false;
       return html`<span>${this.count}</span>`;
     }
   }

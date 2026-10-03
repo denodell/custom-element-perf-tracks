@@ -1,0 +1,217 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>browser scenarios</title>
+<script type="importmap">
+{
+  "imports": {
+    "lit": "/node_modules/lit/index.js",
+    "lit/": "/node_modules/lit/",
+    "lit-html": "/node_modules/lit-html/lit-html.js",
+    "lit-html/": "/node_modules/lit-html/",
+    "lit-element/": "/node_modules/lit-element/",
+    "@lit/reactive-element": "/node_modules/@lit/reactive-element/reactive-element.js",
+    "@lit/reactive-element/": "/node_modules/@lit/reactive-element/"
+  }
+}
+</script>
+<body>
+<script type="module">
+  // Each scenario returns plain data; test/browser.test.mjs makes the assertions.
+  import { configure, definePerf, instrumentElement, emit } from "/dist/index.js";
+  import { trackLitUpdates } from "/dist/adapters/lit.js";
+  import { LitElement, html } from "lit";
+
+  const bars = [];
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      const d = e.detail?.devtools;
+      if (d) bars.push({ name: e.name, track: d.track, color: d.color, props: Object.fromEntries(d.properties ?? []), duration: e.duration });
+    }
+  }).observe({ type: "measure" });
+
+  const frame = () => new Promise((r) => setTimeout(r, 30));
+  const work = (ms) => { const end = performance.now() + ms; while (performance.now() < end) {} };
+  async function collect(fn) {
+    await frame();
+    bars.length = 0;
+    await fn();
+    await frame();
+    return bars.splice(0);
+  }
+
+  const scenarios = {
+    async userMeasuresSurvive() {
+      performance.measure("<keep-me> connected", { start: 0, end: 1 });
+      class KeepMe extends HTMLElement { connectedCallback() {} }
+      definePerf("keep-me", KeepMe);
+      document.body.append(document.createElement("keep-me"));
+      await frame();
+      // The page's own measure is still there, next to the library's bar.
+      return performance.getEntriesByName("<keep-me> connected").filter((e) => !e.detail?.devtools).length;
+    },
+
+    async inheritanceBaseFirst() {
+      class BaseA extends HTMLElement { connectedCallback() { work(1); } }
+      class SubA extends BaseA { connectedCallback() { super.connectedCallback(); } }
+      definePerf("base-a", BaseA);
+      definePerf("sub-a", SubA);
+      return (await collect(() => document.body.append(document.createElement("sub-a"))))
+        .filter((b) => b.track === "Lifecycle").map((b) => b.name);
+    },
+
+    async inheritanceSubFirst() {
+      class BaseB extends HTMLElement { connectedCallback() { work(1); } }
+      class SubB extends BaseB {}
+      definePerf("sub-b", SubB);
+      definePerf("base-b", BaseB);
+      return (await collect(() => {
+        document.body.append(document.createElement("sub-b"));
+        document.body.append(document.createElement("base-b"));
+      })).filter((b) => b.track === "Lifecycle").map((b) => b.name);
+    },
+
+    async failedDefineLeavesClassAlone() {
+      class Taken extends HTMLElement { connectedCallback() {} }
+      customElements.define("taken-el", class extends HTMLElement {});
+      const before = Taken.prototype.connectedCallback;
+      let threw = null;
+      try { definePerf("taken-el", Taken); } catch (e) { threw = e.name; }
+      return { threw, untouched: Taken.prototype.connectedCallback === before };
+    },
+
+    async upgradeCountIncludesShadowRoots() {
+      const host = document.createElement("div");
+      const root = host.attachShadow({ mode: "open" });
+      for (let i = 0; i < 5; i++) root.append(document.createElement("shadow-kid"));
+      for (let i = 0; i < 3; i++) document.body.append(document.createElement("shadow-kid"));
+      document.body.append(host);
+      class ShadowKid extends HTMLElement { connectedCallback() {} }
+      const got = await collect(() => definePerf("shadow-kid", ShadowKid));
+      return got.find((b) => b.track === "Upgrade")?.props["elements upgraded"];
+    },
+
+    async throwingCallback() {
+      class Boom extends HTMLElement { connectedCallback() { throw new TypeError("kaboom"); } }
+      definePerf("boom-el", Boom);
+      const el = new Boom();
+      let message = null;
+      const got = await collect(() => { try { el.connectedCallback(); } catch (e) { message = e.message; } });
+      return { message, colors: got.map((b) => b.color) };
+    },
+
+    async attributeRemovedShowsNone() {
+      class AttrEl extends HTMLElement { static observedAttributes = ["x"]; attributeChangedCallback() {} }
+      definePerf("attr-el", AttrEl);
+      const el = document.createElement("attr-el");
+      el.setAttribute("x", "1");
+      const got = await collect(() => el.removeAttribute("x"));
+      return got[0]?.props;
+    },
+
+    async instrumentAfterDefineWarns() {
+      class Late extends HTMLElement { connectedCallback() {} }
+      customElements.define("late-el", Late);
+      const warnings = [];
+      const warn = console.warn;
+      console.warn = (m) => warnings.push(String(m));
+      instrumentElement(Late);
+      console.warn = warn;
+      return warnings.length;
+    },
+
+    async litBatchingAndNoOps() {
+      class LitA extends LitElement {
+        static properties = { a: { type: Number }, b: { type: Number } };
+        constructor() { super(); this.a = 0; this.b = 0; trackLitUpdates(this); }
+        render() { return html`${this.a}${this.b}`; }
+      }
+      customElements.define("lit-a", LitA);
+      const el = new LitA();
+      document.body.append(el);
+      await el.updateComplete;
+      const five = await collect(async () => { for (let i = 0; i < 5; i++) el.a++; await el.updateComplete; });
+      const noop = await collect(async () => { el.b = 0; el.b = 0; el.requestUpdate(); await el.updateComplete; });
+      const two = await collect(async () => { el.a++; el.b++; await el.updateComplete; });
+      const pick = (g) => g.filter((b) => b.track === "Updates").map((b) => ({ name: b.name, ...b.props }));
+      return { five: pick(five), noop: pick(noop), two: pick(two) };
+    },
+
+    async litFirstUpdateWaits() {
+      class LitB extends LitElement {
+        constructor() { super(); trackLitUpdates(this); }
+        render() { return html`b`; }
+      }
+      customElements.define("lit-b", LitB);
+      const el = new LitB();
+      await new Promise((r) => setTimeout(r, 50));
+      const got = await collect(async () => { document.body.append(el); await el.updateComplete; });
+      return got.filter((b) => b.track === "Updates").map((b) => ({ name: b.name, ...b.props }));
+    },
+
+    async litSkippedAndFailed() {
+      class LitC extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; this.skip = false; this.fail = false; trackLitUpdates(this); }
+        shouldUpdate() { return !this.skip; }
+        render() { if (this.fail) { this.fail = false; throw new Error("render broke"); } return html`${this.v}`; }
+      }
+      customElements.define("lit-c", LitC);
+      const el = new LitC();
+      document.body.append(el);
+      await el.updateComplete;
+      const out = [];
+      out.push(...await collect(async () => { el.skip = true; el.v++; el.v++; await el.updateComplete; el.skip = false; }));
+      out.push(...await collect(async () => { el.fail = true; el.v++; try { await el.updateComplete; } catch {} }));
+      out.push(...await collect(async () => { el.v++; await el.updateComplete; }));
+      return out.filter((b) => b.track === "Updates").map((b) => ({ name: b.name, color: b.color, ...b.props }));
+    },
+
+    async litBarIncludesWillUpdateAndUpdated() {
+      class LitD extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        willUpdate() { work(8); }
+        updated() { work(8); }
+        render() { return html`${this.v}`; }
+      }
+      customElements.define("lit-d", LitD);
+      const el = new LitD();
+      document.body.append(el);
+      await el.updateComplete;
+      const got = await collect(async () => { el.v++; await el.updateComplete; });
+      return got.find((b) => b.track === "Updates")?.duration;
+    },
+
+    async disabledDoesNotPatch() {
+      configure({ enabled: false });
+      class Off extends HTMLElement { connectedCallback() {} }
+      const before = Off.prototype.connectedCallback;
+      definePerf("off-el", Off);
+      class OffLit extends LitElement { constructor() { super(); trackLitUpdates(this); } }
+      customElements.define("off-lit", OffLit);
+      const el = new OffLit();
+      const litUntouched = !Object.prototype.hasOwnProperty.call(el, "requestUpdate");
+      configure({ enabled: undefined }); // ignored, so still off
+      const stillOff = (await import("/dist/index.js")).getConfig().enabled === false;
+      configure({ enabled: true });
+      return { untouched: Off.prototype.connectedCallback === before, litUntouched, stillOff };
+    },
+
+    async timestampStrategyAddsNothingToBuffer() {
+      configure({ strategy: "timestamp" });
+      const before = performance.getEntriesByType("measure").length;
+      emit("<ts> thing", performance.now() - 2, performance.now(), { track: "Updates" });
+      const after = performance.getEntriesByType("measure").length;
+      configure({ strategy: "measure" });
+      return after - before;
+    },
+  };
+
+  const results = {};
+  for (const [name, fn] of Object.entries(scenarios)) {
+    try { results[name] = { ok: true, value: await fn() }; }
+    catch (e) { results[name] = { ok: false, error: String(e?.stack ?? e) }; }
+  }
+  window.__results = results;
+</script>
+</body>
