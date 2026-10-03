@@ -2,6 +2,8 @@
 
 Shows your web components in the Chrome DevTools Performance panel.
 
+![The Chrome DevTools Performance panel with a "Web Components" track group. A Lit update bar is selected, and the summary shows its duration, how many changes were batched, which property changed, and how long it waited.](docs/devtools.png)
+
 React 19.2 added its own tracks to the Performance panel, so React developers can see which component rendered and how long it took. Web components had no equivalent. This library fills that gap for custom elements, Lit and Stencil, using Chrome's [Performance Extensibility API](https://developer.chrome.com/docs/devtools/performance/extension).
 
 After recording a profile, a **Web Components** group appears in the flame chart with three tracks:
