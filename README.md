@@ -78,19 +78,35 @@ observeStencilProfile();
 
 This copies those timings onto the tracks above, rather than timing the same work again. Stencil's originals stay in DevTools' generic "Timings" lane too, so each one appears twice.
 
-### Settings
+## Production builds
+
+None of this code reaches production, and there is nothing to set up. The package contains two versions with the same API: the real one, and an empty one where `definePerf` simply calls `customElements.define` and everything else does nothing. Bundlers that know they are making a production build pick the empty one, so calls like `trackLitUpdates(this)` disappear from the output entirely.
+
+| Tool | Development | Production build |
+| --- | --- | --- |
+| Vite | Real version | Empty version, automatically |
+| webpack (`mode: "production"`) | Real version | Empty version, automatically |
+| esbuild | Real version | Add `--conditions=production` |
+| Rollup | Real version | Add `exportConditions: ["production"]` to `@rollup/plugin-node-resolve` |
+| No bundler | Real version | Real version; set `enabled: false` |
+
+For other tools, the empty version is chosen by the standard `"production"` [export condition](https://nodejs.org/api/packages.html#conditional-exports). Tools that do not read it keep the real version, which stays on unless turned off. The tests build a small app with real Vite, webpack and esbuild and check that production output contains none of the library.
+
+One thing to watch: Vite and webpack decide from `NODE_ENV`, so a dev server started with `NODE_ENV=production` set in the shell gets the empty version, and no tracks appear.
+
+## Settings
 
 ```js
 import { configure } from "custom-element-perf-tracks";
 
 configure({
-  enabled: process.env.NODE_ENV !== "production",
   trackGroup: "My App",     // rename the group in DevTools
   strategy: "timestamp",    // lighter mode, see below
+  enabled: false,           // turn it off entirely
 });
 ```
 
-Call `configure` before defining elements. When `enabled` is `false` at that point, elements and Lit components are left completely untouched, though the library's code is still in the bundle. Settings passed as `undefined` are ignored.
+Call `configure` before defining elements. When `enabled` is `false` at that point, elements and Lit components are left completely untouched. Settings passed as `undefined` are ignored.
 
 There are two ways to draw bars:
 
@@ -114,7 +130,7 @@ Open `http://localhost:5173/demo/`, open DevTools, record in the Performance pan
 
 ## Tests
 
-`npm test` runs everything. The browser tests need Chrome or Chromium; they look in the usual places, or set `CHROME_PATH`. They include an end-to-end check that runs the demo, records a real performance trace, and parses it with DevTools' own trace engine ([`@paulirish/trace_engine`](https://www.npmjs.com/package/@paulirish/trace_engine)) to confirm the Performance panel would draw all three tracks, in both modes.
+`npm test` runs everything. The browser tests need Chrome or Chromium; they look in the usual places, or set `CHROME_PATH`. They include an end-to-end check that runs the demo, records a real performance trace, and parses it with DevTools' own trace engine ([`@paulirish/trace_engine`](https://www.npmjs.com/package/@paulirish/trace_engine)) to confirm the Performance panel would draw all three tracks, in both modes. A separate set of tests builds a small app with Vite, webpack and esbuild to check what reaches production.
 
 ## Licence
 

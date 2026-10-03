@@ -25,14 +25,17 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "production": "./dist/production/index.js",
       "default": "./dist/index.js"
     },
     "./lit": {
       "types": "./dist/adapters/lit.d.ts",
+      "production": "./dist/production/adapters/lit.js",
       "default": "./dist/adapters/lit.js"
     },
     "./stencil": {
       "types": "./dist/adapters/stencil.d.ts",
+      "production": "./dist/production/adapters/stencil.js",
       "default": "./dist/adapters/stencil.js"
     },
     "./package.json": "./package.json"
@@ -58,9 +61,12 @@
   },
   "devDependencies": {
     "@paulirish/trace_engine": "^0.0.65",
+    "esbuild": "^0.28.2",
     "lit": "^3.3.3",
     "puppeteer-core": "^25.12.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vite": "^8.3.2",
+    "webpack": "^5.111.1"
   },
   "engines": {
     "node": ">=18"
