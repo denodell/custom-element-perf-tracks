@@ -308,3 +308,16 @@ test("the production version has exactly the same exports, and does nothing", as
   stop();
   assert.equal(seen.length, 0);
 });
+
+test("every built file is marked as library code, so DevTools hides it from stacks", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const dir = new URL("../dist/", import.meta.url).pathname;
+  const js = fs.readdirSync(dir, { recursive: true }).map(String).filter((f) => f.endsWith(".js"));
+  assert.ok(js.length >= 9);
+  for (const file of js) {
+    const map = JSON.parse(fs.readFileSync(path.join(dir, file + ".map"), "utf8"));
+    assert.deepEqual(map.ignoreList, [0], file);
+    assert.ok(map.sourcesContent?.[0], `${file} map includes its source`);
+  }
+});

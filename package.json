@@ -46,7 +46,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && node scripts/ignore-list.mjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "demo": "npm run build && npx --yes serve -l 5173 .",

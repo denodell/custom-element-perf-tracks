@@ -8,6 +8,8 @@ React 19.2 added [performance tracks](https://react.dev/reference/dev-tools/reac
 
 When you record a profile, a **Web Components** group appears in the flame chart with three tracks.
 
+![Chrome DevTools after clicking a Lit button in the demo. Under Web Components, the Scheduler track shows "Event: click" followed by a blue Render bar and a short Commit bar. The Components track below shows a demo-counter bar lined up with Render. Chrome's own main-thread track underneath shows the same click and the microtasks Lit ran.](docs/devtools-lit.png)
+
 **Scheduler** shows each update as a row of steps, like React's Scheduler track:
 
 | Bar | What it covers |
