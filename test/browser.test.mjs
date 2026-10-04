@@ -266,8 +266,83 @@ for (const lit of ["3", "2"]) {
       assert.equal(result("elementsPreviewAsTags"), "<my-thing>");
     });
 
+    test("instrumentAll instruments new definitions until every caller stops it", { skip }, () => {
+      // A define with nothing to upgrade takes no measurable time, so only
+      // the connected bars are reliable here.
+      const r = result("instrumentAllCanBeStopped");
+      const connected = (list) => list.filter((n) => n.endsWith("connected"));
+      assert.deepEqual(connected(r.during), ["all-one connected"]);
+      assert.deepEqual(connected(r.oneStopped), ["all-two connected"]);
+      assert.deepEqual(r.allStopped, []);
+      assert.equal(r.restored, true);
+    });
+
     test("Lit: an event handled outside shadow DOM is named too", { skip }, () => {
       assert.deepEqual(result("lightDomCustomEvent"), ["Event: my-event"]);
+    });
+  });
+}
+
+// The one-line setup, on its own page because it changes customElements.define.
+for (const lit of ["3", "2"]) {
+  describe(`custom-element-perf-tracks/auto, Lit ${lit}`, () => {
+    let server, browser, results;
+
+    before(async () => {
+      if (skip) return;
+      server = await serve();
+      browser = await launch();
+      const page = await browser.newPage();
+      const errors = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.goto(`${server.origin}/test/browser/auto.html?lit=${lit}`);
+      await page.waitForFunction("window.__results", { timeout: 30000 });
+      results = await page.evaluate("window.__results");
+      assert.deepEqual(errors, [], "page errors");
+    });
+
+    after(async () => {
+      await browser?.close();
+      server?.close();
+    });
+
+    function result(name) {
+      const r = results[name];
+      assert.ok(r, `scenario ${name} missing`);
+      assert.ok(r.ok, r.error);
+      return r.value;
+    }
+
+    test("plain elements get Upgrade and lifecycle bars with no code", { skip }, () => {
+      assert.deepEqual(result("plainElementsWithoutAnyCode"), {
+        upgrade: [["auto-plain define", "3"]],
+        connected: 3,
+      });
+    });
+
+    test("Lit elements get update tracking with no code", { skip }, () => {
+      assert.deepEqual(result("litElementsWithoutAnyCode"), {
+        scheduler: ["Render"],
+        rows: [
+          ["Changed Props", ""],
+          [`-${NB}count`, "0"],
+          [`+${NB}count`, "3"],
+        ],
+      });
+    });
+
+    test("a Lit subclass of a defined Lit class is tracked once", { skip }, () => {
+      assert.deepEqual(result("subclassesTrackedOnce"), ["auto-sub"]);
+    });
+
+    test("definePerf still works, without doubling bars", { skip }, () => {
+      const r = result("definePerfIsNotDoubled");
+      assert.ok(r.upgrade.length <= 1, r.upgrade.join()); // no length when nothing upgrades
+      assert.deepEqual(r.components, ["auto-explicit connected"]);
+    });
+
+    test("customElements.define throws the browser's own errors", { skip }, () => {
+      assert.deepEqual(result("defineErrorsAreUnchanged"), { error: "NotSupportedError", invalid: "SyntaxError" });
     });
   });
 }

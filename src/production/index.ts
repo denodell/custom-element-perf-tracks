@@ -8,6 +8,7 @@
  */
 import type {
   Config,
+  InstrumentAllOptions,
   EmitOptions,
   InstrumentOptions,
   RerouteTarget,
@@ -15,6 +16,7 @@ import type {
 
 export type {
   Config,
+  InstrumentAllOptions,
   ConsoleTask,
   Properties,
   EmitOptions,
@@ -54,6 +56,10 @@ export function definePerf(
   options?: ElementDefinitionOptions & InstrumentOptions,
 ): void {
   customElements.define(tagName, ctor, options?.extends ? { extends: options.extends } : undefined);
+}
+
+export function instrumentAll(_options?: InstrumentAllOptions): () => void {
+  return () => {};
 }
 
 export function rerouteMeasures(

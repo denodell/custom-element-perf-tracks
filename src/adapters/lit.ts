@@ -16,7 +16,7 @@ import {
   type ConsoleTask,
   type Properties,
 } from "../emit.js";
-import { labelFor } from "../define.js";
+import { instrumentAll, labelFor } from "../define.js";
 
 /**
  * Lit update tracking, laid out the way React's performance tracks are.
@@ -519,4 +519,28 @@ export function trackLitUpdates(host: ReactiveElement): void {
   h[TRACKED] = true;
   listenForEvents();
   new LitUpdateTracker(h);
+}
+
+/**
+ * Track every Lit element defined from now on, with no change to their code.
+ * Also instruments every other custom element, like `instrumentAll`. It has
+ * to run before the app's components load; importing
+ * `custom-element-perf-tracks/auto` first does this.
+ *
+ * Returns a function that stops tracking newly defined elements.
+ */
+export function trackAllLitElements(): () => void {
+  return instrumentAll({
+    onDefine(ctor) {
+      const lit = ctor as unknown as {
+        addInitializer?: (init: (el: ReactiveElement) => void) => void;
+        prototype: { performUpdate?: unknown };
+      };
+      // Lit runs initializers for every new instance of the class and its
+      // subclasses, from inside its own constructor.
+      if (typeof lit.addInitializer === "function" && typeof lit.prototype.performUpdate === "function") {
+        lit.addInitializer((el) => trackLitUpdates(el));
+      }
+    },
+  });
 }

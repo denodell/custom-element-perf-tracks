@@ -27,7 +27,7 @@
   // Bars are read back through PerformanceObserver, so these run with the
   // "measure" strategy, which keeps every bar in the buffer. Bars with no
   // length are not drawn, so test components do a little work (work(0.3)).
-  import { configure, getConfig, definePerf, instrumentElement, emit } from "/dist/index.js";
+  import { configure, getConfig, definePerf, instrumentAll, instrumentElement, emit } from "/dist/index.js";
   import { trackLitUpdates } from "/dist/adapters/lit.js";
   import { LitElement, html } from "lit";
 
@@ -608,6 +608,25 @@
     async elementsPreviewAsTags() {
       const { preview } = await import("/dist/emit.js");
       return preview(document.createElement("my-thing"));
+    },
+
+    async instrumentAllCanBeStopped() {
+      const stopA = instrumentAll();
+      const stopB = instrumentAll();
+      class AllOne extends HTMLElement { connectedCallback() { work(0.5); } }
+      class AllTwo extends HTMLElement { connectedCallback() { work(0.5); } }
+      class AllThree extends HTMLElement { connectedCallback() { work(0.5); } }
+      const during = await collect(() => { customElements.define("all-one", AllOne); document.body.append(new AllOne()); });
+      stopA();
+      const oneStopped = await collect(() => { customElements.define("all-two", AllTwo); document.body.append(new AllTwo()); });
+      stopB();
+      const allStopped = await collect(() => { customElements.define("all-three", AllThree); document.body.append(new AllThree()); });
+      return {
+        during: names(during),
+        oneStopped: names(oneStopped),
+        allStopped: names(allStopped),
+        restored: !Object.prototype.hasOwnProperty.call(customElements, "define"),
+      };
     },
 
     async disabledDoesNotPatch() {

@@ -19,7 +19,9 @@
     "chrome-devtools",
     "performance-tracks"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/auto.js"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -37,6 +39,11 @@
       "types": "./dist/adapters/stencil.d.ts",
       "production": "./dist/production/adapters/stencil.js",
       "default": "./dist/adapters/stencil.js"
+    },
+    "./auto": {
+      "types": "./dist/auto.d.ts",
+      "production": "./dist/production/auto.js",
+      "default": "./dist/auto.js"
     },
     "./package.json": "./package.json"
   },

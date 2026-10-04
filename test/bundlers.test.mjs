@@ -26,6 +26,13 @@ observeStencilProfile();
 window.track = trackLitUpdates;
 `;
 
+// An app that only uses the one-line setup. The import has no bindings, so
+// bundlers keep it only because the package marks it as having side effects.
+const AUTO_APP = `
+import "custom-element-perf-tracks/auto";
+customElements.define("my-card", class extends HTMLElement {});
+`;
+
 let dir;
 before(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "cept-bundle-"));
@@ -33,6 +40,7 @@ before(() => {
   // Install this package the way npm would link it.
   fs.symlinkSync(repo, path.join(dir, "node_modules", "custom-element-perf-tracks"), "dir");
   fs.writeFileSync(path.join(dir, "app.js"), APP);
+  fs.writeFileSync(path.join(dir, "auto.js"), AUTO_APP);
   fs.writeFileSync(path.join(dir, "package.json"), '{"type":"module"}');
 });
 
@@ -53,28 +61,28 @@ function check(code, mode) {
   return code.length;
 }
 
-async function vite(mode) {
+async function vite(mode, entry = "app.js") {
   const { build } = await import("vite");
-  const outDir = path.join(dir, `vite-${mode}`);
+  const outDir = path.join(dir, `vite-${mode}-${entry}`);
   await build({
     root: dir,
     mode,
     logLevel: "silent",
     configFile: false,
-    build: { outDir, minify: false, rollupOptions: { input: path.join(dir, "app.js") } },
+    build: { outDir, minify: false, rollupOptions: { input: path.join(dir, entry) } },
   });
   return readAll(outDir);
 }
 
-async function webpack(mode) {
+async function webpack(mode, entry = "app.js") {
   const { default: webpack } = await import("webpack");
-  const outDir = path.join(dir, `webpack-${mode}`);
+  const outDir = path.join(dir, `webpack-${mode}-${entry}`);
   const stats = await new Promise((resolve, reject) =>
     webpack(
       {
         mode,
         context: dir,
-        entry: "./app.js",
+        entry: `./${entry}`,
         output: { path: outDir },
         optimization: { minimize: false },
         devtool: false,
@@ -86,11 +94,11 @@ async function webpack(mode) {
   return readAll(outDir);
 }
 
-async function esbuild(conditions) {
+async function esbuild(conditions, entry = "app.js") {
   const { build } = await import("esbuild");
   const result = await build({
     absWorkingDir: dir,
-    entryPoints: ["app.js"],
+    entryPoints: [entry],
     bundle: true,
     format: "esm",
     write: false,
@@ -108,6 +116,7 @@ test("Vite dev server uses the real code", async () => {
   const { createServer } = await import("vite");
   // An earlier `vite build` in this process sets NODE_ENV=production, which
   // Vite reads when choosing conditions. A fresh dev session has it unset.
+  const savedEnv = process.env.NODE_ENV;
   delete process.env.NODE_ENV;
   const server = await createServer({
     root: dir,
@@ -121,12 +130,15 @@ test("Vite dev server uses the real code", async () => {
       ["custom-element-perf-tracks", "dist/index.js"],
       ["custom-element-perf-tracks/lit", "dist/adapters/lit.js"],
       ["custom-element-perf-tracks/stencil", "dist/adapters/stencil.js"],
+      ["custom-element-perf-tracks/auto", "dist/auto.js"],
     ]) {
       const resolved = await server.pluginContainer.resolveId(id, importer);
       assert.equal(fs.realpathSync(resolved.id), path.join(repo, file));
     }
   } finally {
     await server.close();
+    // Put it back so later builds in this process are not affected.
+    if (savedEnv !== undefined) process.env.NODE_ENV = savedEnv;
   }
 });
 
@@ -144,4 +156,28 @@ test("esbuild with --conditions=production contains none of the library", async 
 
 test("esbuild without the flag keeps the real code (documented)", async () => {
   check(await esbuild([]), "development");
+});
+
+// Strings from the Lit adapter and core that the one-line setup pulls in.
+const AUTO_MARKERS = ["Cascading Update", "Elements upgraded", "addInitializer"];
+
+function checkAuto(code, mode) {
+  const found = AUTO_MARKERS.filter((m) => code.includes(m));
+  assert.match(code, /customElements\.define/);
+  if (mode === "production") assert.deepEqual(found, [], `production build contains: ${found}`);
+  else assert.deepEqual(found, AUTO_MARKERS, "development build dropped the one-line setup");
+}
+
+test("one-line setup: kept in webpack development, gone in production", async () => {
+  checkAuto(await webpack("development", "auto.js"), "development");
+  checkAuto(await webpack("production", "auto.js"), "production");
+});
+
+test("one-line setup: gone in a Vite production build", async () => {
+  checkAuto(await vite("production", "auto.js"), "production");
+});
+
+test("one-line setup: kept by esbuild, gone with --conditions=production", async () => {
+  checkAuto(await esbuild([], "auto.js"), "development");
+  checkAuto(await esbuild(["production"], "auto.js"), "production");
 });

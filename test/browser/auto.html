@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>auto scenarios</title>
+<script>
+  // ?lit=2 runs every scenario against Lit 2 instead of Lit 3.
+  const lit2 = new URLSearchParams(location.search).get("lit") === "2";
+  const base = lit2 ? "/node_modules/lit2/node_modules/" : "/node_modules/";
+  const lit = lit2 ? "/node_modules/lit2/" : "/node_modules/lit/";
+  const map = document.createElement("script");
+  map.type = "importmap";
+  map.textContent = JSON.stringify({
+    imports: {
+      "lit": lit + "index.js",
+      "lit/": lit,
+      "lit-html": base + "lit-html/lit-html.js",
+      "lit-html/": base + "lit-html/",
+      "lit-element/": base + "lit-element/",
+      "@lit/reactive-element": base + "@lit/reactive-element/reactive-element.js",
+      "@lit/reactive-element/": base + "@lit/reactive-element/",
+    },
+  });
+  document.currentScript.after(map);
+</script>
+<body>
+<auto-plain></auto-plain><auto-plain></auto-plain><auto-plain></auto-plain>
+<!-- The one-line setup, loaded before any component is defined. -->
+<script type="module" src="/dist/auto.js"></script>
+<script type="module">
+  import { configure, definePerf } from "/dist/index.js";
+  import { LitElement, html } from "lit";
+
+  configure({ strategy: "measure", minDuration: 0 });
+
+  const bars = [];
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      const d = e.detail?.devtools;
+      if (d) bars.push({ name: e.name, track: d.track, rows: d.properties ?? [], props: Object.fromEntries(d.properties ?? []) });
+    }
+  }).observe({ type: "measure" });
+
+  const frame = () => new Promise((r) => setTimeout(r, 30));
+  const work = (ms) => { const end = performance.now() + ms; while (performance.now() < end) {} };
+  async function collect(fn) { await frame(); bars.length = 0; await fn(); await frame(); return bars.splice(0); }
+  const on = (track, list) => list.filter((b) => b.track === track);
+  const names = (list) => list.map((b) => b.name);
+
+  const scenarios = {
+    async plainElementsWithoutAnyCode() {
+      class AutoPlain extends HTMLElement { connectedCallback() { work(0.5); } }
+      const got = await collect(() => customElements.define("auto-plain", AutoPlain));
+      return {
+        upgrade: on("Upgrade", got).map((b) => [b.name, b.props["Elements upgraded"]]),
+        connected: names(on("Components", got)).filter((n) => n === "auto-plain connected").length,
+      };
+    },
+
+    async litElementsWithoutAnyCode() {
+      // Defined the way Lit's @customElement decorator does it.
+      class AutoCounter extends LitElement {
+        static properties = { count: { type: Number } };
+        constructor() { super(); this.count = 0; }
+        render() { work(0.5); return html`${this.count}`; }
+      }
+      customElements.define("auto-counter", AutoCounter);
+      const el = new AutoCounter();
+      document.body.append(el);
+      await el.updateComplete;
+      const got = await collect(async () => { el.count = 3; await el.updateComplete; });
+      return {
+        scheduler: names(on("Scheduler", got)).filter((n) => n === "Render"),
+        rows: on("Components", got).find((b) => b.name === "auto-counter")?.rows,
+      };
+    },
+
+    async subclassesTrackedOnce() {
+      class AutoBase extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; }
+        render() { work(0.5); return html`${this.v}`; }
+      }
+      class AutoSub extends AutoBase {}
+      customElements.define("auto-base", AutoBase);
+      customElements.define("auto-sub", AutoSub);
+      const el = new AutoSub();
+      document.body.append(el);
+      await el.updateComplete;
+      const got = await collect(async () => { el.v = 1; await el.updateComplete; });
+      return names(on("Components", got)).filter((n) => n.startsWith("auto-"));
+    },
+
+    async definePerfIsNotDoubled() {
+      class Explicit extends HTMLElement { connectedCallback() { work(0.5); } }
+      const got = await collect(() => {
+        definePerf("auto-explicit", Explicit);
+        document.body.append(document.createElement("auto-explicit"));
+      });
+      return { upgrade: names(on("Upgrade", got)), components: names(on("Components", got)) };
+    },
+
+    async defineErrorsAreUnchanged() {
+      let error = null;
+      try { customElements.define("auto-plain", class extends HTMLElement {}); } catch (e) { error = e.name; }
+      let invalid = null;
+      try { customElements.define("nodash", class extends HTMLElement {}); } catch (e) { invalid = e.name; }
+      return { error, invalid };
+    },
+  };
+
+  const results = {};
+  for (const [name, fn] of Object.entries(scenarios)) {
+    try { results[name] = { ok: true, value: await fn() }; }
+    catch (e) { results[name] = { ok: false, error: String(e?.stack ?? e) }; }
+  }
+  window.__results = results;
+</script>
+</body>

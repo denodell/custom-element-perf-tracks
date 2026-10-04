@@ -163,6 +163,16 @@ function instrument(ctor: CustomElementConstructor, options: InstrumentOptions):
   };
 }
 
+type Define = (name: string, ctor: CustomElementConstructor, options?: ElementDefinitionOptions) => void;
+
+/** The registry's own `define`, saved while `instrumentAll` has replaced it. */
+let nativeDefine: Define | null = null;
+
+function define(name: string, ctor: CustomElementConstructor, options?: ElementDefinitionOptions): void {
+  if (nativeDefine) nativeDefine(name, ctor, options);
+  else customElements.define(name, ctor, options);
+}
+
 /**
  * A drop-in for `customElements.define` that also instruments the class.
  *
@@ -177,12 +187,12 @@ export function definePerf(
 ): void {
   // Leave the class untouched if `define` is going to fail anyway.
   if (customElements.get(tagName) || customElements.getName?.(ctor)) {
-    customElements.define(tagName, ctor, options); // throws the browser's own error
+    define(tagName, ctor, options); // throws the browser's own error
     return;
   }
   const restore = instrument(ctor, options ?? {});
   if (!isEnabled()) {
-    customElements.define(tagName, ctor, options);
+    define(tagName, ctor, options);
     return;
   }
 
@@ -195,7 +205,7 @@ export function definePerf(
   const start = now();
   let failed = true;
   try {
-    customElements.define(tagName, ctor, options);
+    define(tagName, ctor, options);
     failed = false;
   } catch (error) {
     // An invalid name, for example: leave the class as it was.
@@ -209,4 +219,72 @@ export function definePerf(
       properties: countable ? [["Elements upgraded", String(current.count)]] : undefined,
     });
   }
+}
+
+export interface InstrumentAllOptions {
+  /**
+   * Called with each class just before it is defined, while its instances
+   * do not exist yet. The Lit adapter uses this to track Lit elements.
+   */
+  onDefine?: (ctor: CustomElementConstructor, name: string) => void;
+}
+
+const defineHooks = new Set<NonNullable<InstrumentAllOptions["onDefine"]>>();
+let users = 0;
+let unpatch: (() => void) | null = null;
+
+/**
+ * Instrument every custom element defined from now on, as if each one had
+ * been defined with `definePerf`. Elements defined before this runs are not
+ * affected, so it has to run before the app's components load.
+ *
+ * Returns a function that stops instrumenting newly defined elements.
+ * Does nothing if instrumentation is turned off at this point.
+ */
+export function instrumentAll(options: InstrumentAllOptions = {}): () => void {
+  if (!isEnabled() || typeof customElements === "undefined") return () => {};
+  const hook = options.onDefine;
+  if (hook) defineHooks.add(hook);
+  users++;
+
+  if (!unpatch) {
+    const registry = customElements;
+    const hadOwn = Object.prototype.hasOwnProperty.call(registry, "define");
+    const previous = registry.define;
+    nativeDefine = previous.bind(registry);
+    const patched = function define(
+      this: CustomElementRegistry,
+      name: string,
+      ctor: CustomElementConstructor,
+      opts?: ElementDefinitionOptions,
+    ): void {
+      if (this !== registry) return previous.call(this, name, ctor, opts);
+      for (const h of defineHooks) {
+        try {
+          h(ctor, name);
+        } catch {
+          // Never let instrumentation stop an element being defined.
+        }
+      }
+      definePerf(name, ctor, opts);
+    };
+    registry.define = patched;
+    unpatch = () => {
+      // Only undo our own change, in case something else wrapped it since.
+      if (registry.define === patched) {
+        if (hadOwn) registry.define = previous;
+        else delete (registry as { define?: unknown }).define;
+      }
+      nativeDefine = null;
+      unpatch = null;
+    };
+  }
+
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    if (hook) defineHooks.delete(hook);
+    if (--users === 0) unpatch?.();
+  };
 }

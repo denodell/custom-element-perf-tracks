@@ -13,7 +13,9 @@ export {
 } from "./emit.js";
 export {
   definePerf,
+  instrumentAll,
   instrumentElement,
+  type InstrumentAllOptions,
   type InstrumentOptions,
   type LifecycleCallback,
 } from "./define.js";
