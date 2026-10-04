@@ -99,6 +99,14 @@ These are copies of Stencil's timings. Stencil's originals also stay in DevTools
 
 Stencil doesn't record what caused an update, so Stencil updates have no **Event** or **Update** bars. Very short timings, such as `scheduleUpdate` for a component with no `componentWillUpdate` work, are hidden by the same `minDuration` cut-off as other short work. This is tested against a real Stencil 4 app, built in dev mode and recorded in Chrome.
 
+## Tested on a real app
+
+The [Home Assistant](https://github.com/home-assistant/frontend) frontend is one of the largest open-source Lit apps. Its demo was instrumented without changing its code, by wrapping `customElements.define` so that every Lit component (376 of them) got `trackLitUpdates`, and recorded in Chrome during page load and some clicking.
+
+- Every bar nested correctly, and nothing broke.
+- It found a real inefficiency: every `ha-button` updates twice when it first appears. The button's base class, from the Web Awesome library, sets a `validity` property in `firstUpdated()`, and the Cascading Update bar names that property in its Changed Props.
+- With a debugger attached, as it is when DevTools is open, the library added about 4% to the main-thread work of loading the page.
+
 ## Production builds
 
 None of this code reaches production, and there's nothing to set up. The package contains two versions with the same API: the real one, and an empty one where `definePerf` just calls `customElements.define` and everything else does nothing. Bundlers that know they're making a production build pick the empty version, so calls like `trackLitUpdates(this)` disappear from the output.
@@ -132,9 +140,13 @@ configure({
 
 `strategy` picks how bars are drawn:
 
-- **`"auto"`** (the default) works the way React does. Bars without details use `console.timeStamp`, which does very little work. Bars with details use `performance.measure` and are removed from the page's performance buffer straight away. They're saved under a name that starts with an invisible character, so removing them never touches the page's own measures.
-- **`"measure"`** draws every bar with `performance.measure` and leaves them in the buffer, so test scripts can read them back with `performance.getEntriesByType("measure")`.
-- **`"timestamp"`** draws every bar with `console.timeStamp`. This does the least work, but no bar has details.
+- **`"auto"`** (the default) draws every bar with `performance.measure`, including its details, and removes it from the page's performance buffer straight away. It's saved under a name that starts with an invisible character, so removing it never touches the page's own measures.
+- **`"measure"`** does the same but leaves the bars in the buffer, so test scripts can read them back with `performance.getEntriesByType("measure")`.
+- **`"timestamp"`** draws every bar with `console.timeStamp`, as React does for most of its bars. No bar has details.
+
+React's choice of `console.timeStamp` is the cheaper one when nothing is listening to the page: about 0.3 µs a bar, against 4 µs for `performance.measure`. But once a debugger is attached, which it always is when DevTools is open, `console.timeStamp` became about six times more expensive than `performance.measure` in testing. That's why `"auto"` uses `performance.measure`.
+
+Bars with no length are invisible, so they aren't drawn at all, except for errors.
 
 `minDuration` hides lifecycle callbacks and effects shorter than this many milliseconds, so the chart isn't covered in tiny bars. It defaults to 0.05 ms, the same cut-off React uses for effects. Renders are always drawn.
 

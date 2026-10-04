@@ -25,7 +25,8 @@
 <script type="module">
   // Each scenario returns plain data; test/browser.test.mjs makes the assertions.
   // Bars are read back through PerformanceObserver, so these run with the
-  // "measure" strategy, which draws every bar as a measure.
+  // "measure" strategy, which keeps every bar in the buffer. Bars with no
+  // length are not drawn, so test components do a little work (work(0.3)).
   import { configure, getConfig, definePerf, instrumentElement, emit } from "/dist/index.js";
   import { trackLitUpdates } from "/dist/adapters/lit.js";
   import { LitElement, html } from "lit";
@@ -161,7 +162,7 @@
     },
 
     async attributeDiff() {
-      class AttrEl extends HTMLElement { static observedAttributes = ["x"]; attributeChangedCallback() {} }
+      class AttrEl extends HTMLElement { static observedAttributes = ["x"]; attributeChangedCallback() { work(0.3); } }
       definePerf("attr-el", AttrEl);
       const el = document.createElement("attr-el");
       el.setAttribute("x", "1");
@@ -241,7 +242,7 @@
       class LitE extends LitElement {
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; trackLitUpdates(this); }
-        render() { return html`<button @click=${this.onClick}>${this.v}</button>`; }
+        render() { work(0.3); return html`<button @click=${this.onClick}>${this.v}</button>`; }
         onClick() { work(3); this.v++; work(8); } // busy before and after the change
       }
       customElements.define("lit-e", LitE);
@@ -261,12 +262,12 @@
       class LitChild extends LitElement {
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; trackLitUpdates(this); }
-        render() { return html`${this.v}`; }
+        render() { work(0.3); return html`${this.v}`; }
       }
       class LitParent extends LitElement {
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; trackLitUpdates(this); }
-        render() { return html`<lit-child .v=${this.v}></lit-child>`; }
+        render() { work(0.3); return html`<lit-child .v=${this.v}></lit-child>`; }
       }
       customElements.define("lit-child", LitChild);
       customElements.define("lit-parent", LitParent);
@@ -286,7 +287,7 @@
       class LitCascade extends LitElement {
         static properties = { v: { type: Number }, doubled: { type: Number } };
         constructor() { super(); this.v = 0; this.doubled = 0; trackLitUpdates(this); }
-        render() { return html`${this.doubled}`; }
+        render() { work(0.3); return html`${this.doubled}`; }
         updated(changed) { if (changed.has("v")) this.doubled = this.v * 2; } // the mistake Lit warns about
       }
       customElements.define("lit-cascade", LitCascade);
@@ -311,8 +312,8 @@
       class LitC extends LitElement {
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; this.skip = false; this.fail = false; trackLitUpdates(this); }
-        shouldUpdate() { return !this.skip; }
-        render() { if (this.fail) { this.fail = false; throw new Error("render broke"); } return html`${this.v}`; }
+        shouldUpdate() { work(0.3); return !this.skip; }
+        render() { work(0.3); if (this.fail) { this.fail = false; throw new Error("render broke"); } return html`${this.v}`; }
       }
       customElements.define("lit-c", LitC);
       const el = new LitC();
@@ -332,7 +333,7 @@
       class LitBad extends LitElement {
         static properties = { when: { attribute: false }, boom: { attribute: false } };
         constructor() { super(); this.when = new Date(0); trackLitUpdates(this); }
-        render() { return html`x`; }
+        render() { work(0.3); return html`x`; }
       }
       customElements.define("lit-bad", LitBad);
       const el = new LitBad();
@@ -351,7 +352,7 @@
       class LitRef extends LitElement {
         static properties = { v: { type: Number }, measured: { state: true } };
         constructor() { super(); this.v = 0; this.measured = 0; trackLitUpdates(this); }
-        render() { return html`<span ${ref((node) => { if (node && this.v) this.measured = this.v * 10; })}>${this.measured}</span>`; }
+        render() { work(0.3); return html`<span ${ref((node) => { if (node && this.v) this.measured = this.v * 10; })}>${this.measured}</span>`; }
       }
       customElements.define("lit-ref", LitRef);
       const el = new LitRef();
@@ -370,7 +371,7 @@
       class LitSelf extends LitElement {
         static properties = { a: { type: Number } };
         constructor() { super(); this.a = 0; trackLitUpdates(this); }
-        render() { return html`${this.a}`; }
+        render() { work(0.3); return html`${this.a}`; }
         updated() { if (this.a === 1) { this.a = 2; this.performUpdate(); } }
       }
       customElements.define("lit-self", LitSelf);
@@ -386,7 +387,7 @@
       class LitX extends LitElement {
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; trackLitUpdates(this); }
-        render() { return html`${this.v}`; }
+        render() { work(0.3); return html`${this.v}`; }
       }
       class LitLater extends LitX {
         // Updates a frame later, like an element that defers its updates.
@@ -417,7 +418,7 @@
       class LitCheck extends LitElement {
         static properties = { checked: { type: Boolean } };
         constructor() { super(); this.checked = false; trackLitUpdates(this); }
-        render() { return html`<input type="checkbox" @change=${(e) => { work(1); this.checked = e.target.checked; }}>`; }
+        render() { work(0.3); return html`<input type="checkbox" @change=${(e) => { work(1); this.checked = e.target.checked; }}>`; }
       }
       customElements.define("lit-check", LitCheck);
       const el = new LitCheck();
@@ -432,7 +433,7 @@
       class LitMove extends LitElement {
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; trackLitUpdates(this); }
-        render() { return html`${this.v}`; }
+        render() { work(0.3); return html`${this.v}`; }
       }
       customElements.define("lit-move", LitMove);
       const el = new LitMove();
@@ -461,7 +462,7 @@
       class ProdLit extends LitElement {
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 1; prodLit.trackLitUpdates(this); }
-        render() { return html`${this.v}`; }
+        render() { work(0.3); return html`${this.v}`; }
       }
       customElements.define("prod-lit", ProdLit);
       const lit = new ProdLit();
@@ -518,7 +519,7 @@
       class LitFirstCascade extends LitElement {
         static properties = { ready: { type: Boolean } };
         constructor() { super(); this.ready = false; trackLitUpdates(this); }
-        render() { return html`${this.ready}`; }
+        render() { work(0.3); return html`${this.ready}`; }
         firstUpdated() { this.ready = true; }
       }
       customElements.define("lit-first-cascade", LitFirstCascade);
@@ -531,7 +532,7 @@
       class LitGone extends LitElement {
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; trackLitUpdates(this); }
-        render() { return html`${this.v}`; }
+        render() { work(0.3); return html`${this.v}`; }
       }
       customElements.define("lit-gone", LitGone);
       const el = new LitGone();
@@ -556,7 +557,7 @@
         constructor() { super(); this._secret = 0; this.locked = false; trackLitUpdates(this); }
         get secret() { if (this.locked) throw new Error("locked"); return this._secret; }
         set secret(v) { const old = this._secret; this._secret = v; this.requestUpdate("secret", old); this.locked = true; }
-        render() { return html`${this._secret}`; }
+        render() { work(0.3); return html`${this._secret}`; }
       }
       customElements.define("lit-tricky", LitTricky);
       const el = new LitTricky();
@@ -573,7 +574,7 @@
       class LitTarget extends LitElement {
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; trackLitUpdates(this); }
-        render() { return html`${this.v}`; }
+        render() { work(0.3); return html`${this.v}`; }
       }
       customElements.define("lit-target", LitTarget);
       const target = new LitTarget();

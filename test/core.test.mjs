@@ -321,3 +321,24 @@ test("every built file is marked as library code, so DevTools hides it from stac
     assert.ok(map.sourcesContent?.[0], `${file} map includes its source`);
   }
 });
+
+test("bars with no length are not drawn", async () => {
+  const { seen, stop } = collect();
+  const t = performance.now();
+  emit("<z> zero", t, t, { track: "Components" });
+  emit("<z> backwards", t, t - 1, { track: "Components" });
+  emit("<z> real", t, t + 1, { track: "Components" });
+  await tick();
+  stop();
+  assert.deepEqual(seen.map((e) => e.name), ["<z> real"]);
+});
+
+test("error bars are drawn even with no length", async () => {
+  const { seen, stop } = collect();
+  const t = performance.now();
+  assert.throws(() => timed("<z> instant failure", { track: "Components" }, () => { throw new Error("now"); }));
+  emit("<z> instant error", t, t, { track: "Components", color: "error" });
+  await tick();
+  stop();
+  assert.deepEqual(seen.map((e) => e.name).sort(), ["<z> instant error", "<z> instant failure"]);
+});
