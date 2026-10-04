@@ -4,17 +4,17 @@ Shows your web components in the Chrome DevTools Performance panel.
 
 ![The Chrome DevTools Performance panel with a "Web Components" track group. The Upgrade track shows one wide bar for defining demo-card, and the Lifecycle track below it shows a bar for each element as it upgrades. The summary reports 20 elements upgraded in 60.5 ms.](docs/devtools-upgrade.png)
 
-React 19.2 added its own tracks to the Performance panel, so React developers can see which component rendered and how long it took. Web components had no equivalent. This library fills that gap for custom elements, Lit and Stencil, using Chrome's [Performance Extensibility API](https://developer.chrome.com/docs/devtools/performance/extension).
+React 19.2 added its own tracks to the Performance panel, so React developers can see which component rendered and how long it took. Web components had nothing like it. This library adds the same kind of tracks for custom elements, Lit and Stencil, using Chrome's [Performance Extensibility API](https://developer.chrome.com/docs/devtools/performance/extension).
 
-After recording a profile, a **Web Components** group appears in the flame chart with three tracks:
+When you record a profile, a **Web Components** group appears in the flame chart with three tracks:
 
 | Track | What it shows | Source |
 | --- | --- | --- |
 | **Upgrade** | The `customElements.define` call, which upgrades every matching element already in the page, including inside shadow roots | `definePerf` |
 | **Lifecycle** | Each `connected`, `disconnected`, `attributeChanged` and `adopted` callback, per element | `definePerf`, `instrumentElement`, Stencil |
-| **Updates** | Each Lit update, with how many changes Lit batched into it; or Stencil's own update timings | `trackLitUpdates`, `observeStencilProfile` |
+| **Updates** | Each Lit update, with how many changes Lit batched into it, or Stencil's own update timings | `trackLitUpdates`, `observeStencilProfile` |
 
-Selecting a bar shows extra details, such as which attribute changed, how many elements were upgraded, or which properties a Lit update picked up. Anything that throws gets a red bar.
+Clicking a bar shows more detail, such as which attribute changed, how many elements were upgraded, or which properties a Lit update picked up. Anything that throws gets a red bar.
 
 ## Install
 
@@ -22,11 +22,11 @@ Selecting a bar shows extra details, such as which attribute changed, how many e
 npm install custom-element-perf-tracks
 ```
 
-## Use
+## Usage
 
 ### Any custom element
 
-Swap `customElements.define` for `definePerf`:
+`definePerf` takes the same arguments as `customElements.define`:
 
 ```js
 import { definePerf } from "custom-element-perf-tracks";
@@ -34,13 +34,13 @@ import { definePerf } from "custom-element-perf-tracks";
 definePerf("my-card", MyCard);
 ```
 
-If something else does the defining, call `instrumentElement(MyCard)` first instead. It has to run before the class is defined, because that is when browsers read the lifecycle callbacks; calling it later logs a warning and does nothing.
+When something else defines the element, `instrumentElement(MyCard)` adds the Lifecycle track on its own. It has to run before the class is defined, because that's when the browser reads the lifecycle callbacks. If it runs later, it logs a warning and does nothing.
 
-Classes that extend each other can all be instrumented. Each callback still produces one bar, named after the element that ran it.
+Classes that extend each other can all be instrumented. You still get one bar per callback, named after the element that ran it.
 
 ### Lit
 
-Call `trackLitUpdates` from the constructor:
+`trackLitUpdates` goes in the constructor:
 
 ```js
 import { LitElement } from "lit";
@@ -54,21 +54,21 @@ class MyCounter extends LitElement {
 }
 ```
 
-Each bar covers Lit's whole update: `shouldUpdate`, `willUpdate`, `render` and writing the result to the page, then `firstUpdated` and `updated`. Its details show:
+Each bar covers Lit's whole update: `shouldUpdate`, `willUpdate`, `render` and writing the result to the page, then `firstUpdated` and `updated`. Clicking it shows:
 
-- **changes batched**: how many property changes Lit folded into this one update. Setting a property to the value it already has is not counted.
-- **changed properties**: their names.
+- **changes batched**: how many property changes Lit folded into this one update. Setting a property to the value it already has doesn't count.
+- **changed properties**: the names of those properties.
 - **waited before update**: the time between the first change and the update starting.
 
-Updates that `shouldUpdate` skips appear as light "update skipped" bars, and updates that throw appear as red "update failed" bars.
+When `shouldUpdate` skips an update, you get a light "update skipped" bar. When an update throws, you get a red "update failed" bar.
 
 ![A Lit update bar selected on the Updates track. The summary shows a 25 ms update, one change batched, the changed property "count", and the wait before the update.](docs/devtools-lit.png)
 
-The adapter only uses Lit's public API and has no runtime dependency on Lit. It is tested with Lit 3, and should also work with Lit 2.
+The Lit adapter uses only Lit's public API, and doesn't import Lit at runtime. It's tested with Lit 3 and should also work with Lit 2.
 
 ### Stencil
 
-Stencil records its own timings in dev builds, and in production builds made with `stencil build --profile`. Once at startup:
+Stencil already records its own timings in dev builds, and in production builds made with `stencil build --profile`. One call at startup picks them up:
 
 ```js
 import { observeStencilProfile } from "custom-element-perf-tracks/stencil";
@@ -76,23 +76,23 @@ import { observeStencilProfile } from "custom-element-perf-tracks/stencil";
 observeStencilProfile();
 ```
 
-This copies those timings onto the tracks above, rather than timing the same work again. Stencil's originals stay in DevTools' generic "Timings" lane too, so each one appears twice.
+This copies Stencil's timings onto the tracks above instead of timing the same work a second time. Stencil's originals also stay in DevTools' general "Timings" lane, so each one appears twice.
 
 ## Production builds
 
-None of this code reaches production, and there is nothing to set up. The package contains two versions with the same API: the real one, and an empty one where `definePerf` simply calls `customElements.define` and everything else does nothing. Bundlers that know they are making a production build pick the empty one, so calls like `trackLitUpdates(this)` disappear from the output entirely.
+None of this code reaches production, and there's nothing to set up. The package contains two versions with the same API: the real one, and an empty one where `definePerf` just calls `customElements.define` and everything else does nothing. Bundlers that know they're making a production build pick the empty version, so calls like `trackLitUpdates(this)` disappear from the output.
 
 | Tool | Development | Production build |
 | --- | --- | --- |
 | Vite | Real version | Empty version, automatically |
 | webpack (`mode: "production"`) | Real version | Empty version, automatically |
-| esbuild | Real version | Add `--conditions=production` |
-| Rollup | Real version | Add `exportConditions: ["production"]` to `@rollup/plugin-node-resolve` |
-| No bundler | Real version | Real version; set `enabled: false` |
+| esbuild | Real version | Empty version with `--conditions=production` |
+| Rollup | Real version | Empty version with `exportConditions: ["production"]` in `@rollup/plugin-node-resolve` |
+| No bundler | Real version | Real version, unless `enabled` is `false` |
 
-For other tools, the empty version is chosen by the standard `"production"` [export condition](https://nodejs.org/api/packages.html#conditional-exports). Tools that do not read it keep the real version, which stays on unless turned off. The tests build a small app with real Vite, webpack and esbuild and check that production output contains none of the library.
+Bundlers choose the empty version through the standard `"production"` [export condition](https://nodejs.org/api/packages.html#conditional-exports), so any other tool that supports it works the same way. Tools that don't support it keep the real version, which stays on unless you turn it off.
 
-One thing to watch: Vite and webpack decide from `NODE_ENV`, so a dev server started with `NODE_ENV=production` set in the shell gets the empty version, and no tracks appear.
+Vite and webpack decide which build they're making from `NODE_ENV`. A dev server started with `NODE_ENV=production` already set in the shell gets the empty version, and no tracks appear.
 
 ## Settings
 
@@ -101,37 +101,39 @@ import { configure } from "custom-element-perf-tracks";
 
 configure({
   trackGroup: "My App",     // rename the group in DevTools
-  strategy: "timestamp",    // lighter mode, see below
-  enabled: false,           // turn it off entirely
+  strategy: "timestamp",    // the lighter mode described below
+  enabled: false,           // turn it off completely
 });
 ```
 
-Call `configure` before defining elements. When `enabled` is `false` at that point, elements and Lit components are left completely untouched. Settings passed as `undefined` are ignored.
+`configure` needs to run before your elements are defined. If `enabled` is `false` at that point, elements and Lit components are left completely alone. Any setting passed as `undefined` is ignored.
 
-There are two ways to draw bars:
+There are two ways the library can draw bars:
 
-- **`"measure"`** (default) uses `performance.measure`. Bars carry the details described above. Each bar also adds an entry to the page's performance buffer, which grows over a long session.
-- **`"timestamp"`** uses `console.timeStamp`. Much cheaper, and adds nothing to the buffer, but bars show only a name and colour.
+- **`"measure"`** (the default) uses `performance.measure`. Bars include all the detail described above. Each bar also adds an entry to the page's performance buffer, and that list keeps growing over a long session.
+- **`"timestamp"`** uses `console.timeStamp`. It does much less work per bar and adds nothing to the buffer, but bars show only a name and a color.
 
-## Try the demo
+## Demo
 
 ```sh
 npm install
 npm run demo
 ```
 
-Open `http://localhost:5173/demo/`, open DevTools, record in the Performance panel, click a few buttons, then stop. Add `?strategy=timestamp` to try the lighter mode.
+The demo runs at `http://localhost:5173/demo/`. With DevTools open, you record in the Performance panel, click a few buttons, then stop. Adding `?strategy=timestamp` to the address switches to the lighter mode.
 
-## Good to know
+## Limitations
 
-- **Chrome and Edge only** for the tracks themselves. Other browsers ignore the extra data, so nothing breaks there.
-- **Very fast work can vanish.** Browsers round timestamps to about a tenth of a millisecond, so anything faster has zero length and DevTools does not draw it.
+- **Tracks only appear in Chrome and Edge.** Other browsers ignore the extra data, so nothing breaks there.
+- **Very fast work can disappear.** Browsers round timestamps to about a tenth of a millisecond, so anything faster has zero length and DevTools doesn't draw it.
 - **Only synchronous work is timed.** A lifecycle callback that starts async work gets a bar for the synchronous part only.
 
 ## Tests
 
-`npm test` runs everything. The browser tests need Chrome or Chromium; they look in the usual places, or set `CHROME_PATH`. They include an end-to-end check that runs the demo, records a real performance trace, and parses it with DevTools' own trace engine ([`@paulirish/trace_engine`](https://www.npmjs.com/package/@paulirish/trace_engine)) to confirm the Performance panel would draw all three tracks, in both modes. A separate set of tests builds a small app with Vite, webpack and esbuild to check what reaches production.
+`npm test` runs everything. The browser tests need Chrome or Chromium, which they look for in the usual places, or wherever `CHROME_PATH` points.
 
-## Licence
+One test runs the demo, records a real performance trace, and reads it with DevTools' own trace engine ([`@paulirish/trace_engine`](https://www.npmjs.com/package/@paulirish/trace_engine)) to check that the Performance panel would draw all three tracks, in both modes. Another set builds a small app with Vite, webpack and esbuild, and checks that production output contains none of the library while development output still contains all of it.
+
+## License
 
 MIT
