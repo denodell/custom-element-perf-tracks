@@ -5,15 +5,16 @@ import {
   REMOVED,
   Tracks,
   createTask,
+  effectColor,
   emit,
   isEnabled,
   minDuration,
   now,
   preview,
+  renderColor,
   withError,
   type ConsoleTask,
   type Properties,
-  type TrackColor,
 } from "../emit.js";
 import { labelFor } from "../define.js";
 
@@ -55,15 +56,8 @@ const notEqual = (value: unknown, old: unknown) => !Object.is(value, old);
 
 const TRACKED = Symbol.for("custom-element-perf-tracks.lit");
 
-/** Same thresholds as React uses for component render colors. */
-function renderColor(ms: number): TrackColor {
-  return ms < 0.5 ? "primary-light" : ms < 10 ? "primary" : ms < 100 ? "primary-dark" : "error";
-}
-
-/** Same thresholds as React uses for effect colors. */
-function effectColor(ms: number): TrackColor {
-  return ms < 1 ? "secondary-light" : ms < 100 ? "secondary" : ms < 500 ? "secondary-dark" : "error";
-}
+/** Stands in for a property value whose getter threw. */
+const UNREADABLE = Symbol("unreadable");
 
 // ---- Events ---------------------------------------------------------------
 
@@ -373,7 +367,7 @@ class LitUpdateTracker implements ReactiveController {
       try {
         value = host[name];
       } catch {
-        value = "(could not read)";
+        value = UNREADABLE;
       }
       changed.push([String(name), old, value]);
     }
@@ -446,7 +440,10 @@ class LitUpdateTracker implements ReactiveController {
       if (!first && info.changed.length) {
         rows.push(["Changed Props", ""]);
         for (const [name, old, value] of info.changed) {
-          rows.push([REMOVED + name, preview(old)], [ADDED + name, preview(value)]);
+          rows.push(
+            [REMOVED + name, preview(old)],
+            [ADDED + name, value === UNREADABLE ? "(could not read)" : preview(value)],
+          );
         }
       }
       return rows;

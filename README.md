@@ -79,7 +79,7 @@ A few details are specific to Lit:
 - An update that `shouldUpdate()` skips shows as a light "my-element skipped" bar.
 - The wait shown by **Update** starts when the element is connected, because Lit doesn't update elements until then.
 
-The Lit adapter uses only Lit's public API, and doesn't import Lit at runtime. It's tested with Lit 3 and should also work with Lit 2.
+The Lit adapter uses only Lit's public API, and doesn't import Lit at runtime. Every Lit test runs against both Lit 2 and Lit 3.
 
 ### Stencil
 
@@ -154,7 +154,12 @@ The demo runs at `http://localhost:5173/demo/`. With DevTools open, you record i
 
 `npm test` runs everything. The browser tests need Chrome or Chromium, which they look for in the usual places, or wherever `CHROME_PATH` points.
 
-One test runs the demo, records a real performance trace, and reads it with DevTools' own trace engine ([`@paulirish/trace_engine`](https://www.npmjs.com/package/@paulirish/trace_engine)). It checks that the Performance panel would draw all three tracks, with React's names and colors and with bars nested correctly, in all three drawing modes. Another set builds a small app with Vite, webpack and esbuild, and checks that production output contains none of the library while development output still contains all of it.
+- **Browser tests** run each behavior described above in headless Chrome, once with Lit 3 and once with Lit 2.
+- **An end-to-end test** runs the demo, records a real performance trace, and reads it with DevTools' own trace engine ([`@paulirish/trace_engine`](https://www.npmjs.com/package/@paulirish/trace_engine)). It checks that the Performance panel would draw all three tracks, with React's names and colors and with bars nested correctly, in all three drawing modes.
+- **Bundler tests** build a small app with Vite, webpack and esbuild, and check that production output contains none of the library while development output still contains all of it.
+- **Node tests** cover the drawing code, value formatting, Stencil timings, and the empty production version.
+
+`npm run coverage` runs the same tests and reports which lines of the library they reached, combining what ran in Node with what ran in the browser. The report also goes to `coverage/index.html`.
 
 ## License
 

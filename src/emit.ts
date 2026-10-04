@@ -294,6 +294,16 @@ function previewUnsafe(value: unknown): string {
   }
 }
 
+/** @internal Render bar color by duration, using React's thresholds. */
+export function renderColor(ms: number): TrackColor {
+  return ms < 0.5 ? "primary-light" : ms < 10 ? "primary" : ms < 100 ? "primary-dark" : "error";
+}
+
+/** @internal Effect bar color by duration, using React's thresholds. */
+export function effectColor(ms: number): TrackColor {
+  return ms < 1 ? "secondary-light" : ms < 100 ? "secondary" : ms < 500 ? "secondary-dark" : "error";
+}
+
 /** @internal React's prefixes for removed and added values. */
 export const REMOVED = "- ";
 export const ADDED = "+ ";

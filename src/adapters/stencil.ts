@@ -1,13 +1,7 @@
-import { Tracks, minDuration, type TrackColor } from "../emit.js";
+import { Tracks, effectColor, minDuration, renderColor } from "../emit.js";
 import { rerouteMeasures } from "../reroute.js";
 
 let stop: (() => void) | null = null;
-
-/** Same thresholds React uses for render and effect colors. */
-const renderColor = (ms: number): TrackColor =>
-  ms < 0.5 ? "primary-light" : ms < 10 ? "primary" : ms < 100 ? "primary-dark" : "error";
-const effectColor = (ms: number): TrackColor =>
-  ms < 1 ? "secondary-light" : ms < 100 ? "secondary" : ms < 500 ? "secondary-dark" : "error";
 
 /** One-off setup work, drawn on the Upgrade track. */
 const SETUP = new Set(["createInstance", "attachStyles", "registerStyles", "hydrateClient"]);

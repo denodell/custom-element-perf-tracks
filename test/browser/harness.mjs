@@ -42,11 +42,48 @@ export function findChrome() {
   return CANDIDATES.find((p) => fs.existsSync(p)) ?? null;
 }
 
+let coverageFiles = 0;
+
+/**
+ * Launch headless Chrome. When COVERAGE_DIR is set (npm run coverage), every
+ * page records which parts of the library ran, and the results are saved in
+ * the same format Node uses, so one report covers browser and Node tests.
+ */
 export async function launch() {
   const { default: puppeteer } = await import("puppeteer-core");
-  return puppeteer.launch({
+  const browser = await puppeteer.launch({
     executablePath: findChrome(),
     headless: true,
     args: ["--no-sandbox", "--disable-gpu"],
   });
+  const dir = process.env.COVERAGE_DIR;
+  if (!dir) return browser;
+
+  const pages = [];
+  const newPage = browser.newPage.bind(browser);
+  browser.newPage = async () => {
+    const page = await newPage();
+    await page.coverage.startJSCoverage({ includeRawScriptCoverage: true, resetOnNavigation: false });
+    pages.push(page);
+    return page;
+  };
+  const close = browser.close.bind(browser);
+  browser.close = async () => {
+    for (const page of pages) {
+      const entries = await page.coverage.stopJSCoverage().catch(() => []);
+      const result = entries
+        .filter((e) => e.rawScriptCoverage && new URL(e.url).pathname.startsWith("/dist/"))
+        .map((e) => ({
+          ...e.rawScriptCoverage,
+          url: "file://" + path.join(root, new URL(e.url).pathname),
+        }));
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, `coverage-browser-${process.pid}-${coverageFiles++}.json`),
+        JSON.stringify({ result }),
+      );
+    }
+    return close();
+  };
+  return browser;
 }

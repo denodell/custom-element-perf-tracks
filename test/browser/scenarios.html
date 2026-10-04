@@ -1,18 +1,25 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>browser scenarios</title>
-<script type="importmap">
-{
-  "imports": {
-    "lit": "/node_modules/lit/index.js",
-    "lit/": "/node_modules/lit/",
-    "lit-html": "/node_modules/lit-html/lit-html.js",
-    "lit-html/": "/node_modules/lit-html/",
-    "lit-element/": "/node_modules/lit-element/",
-    "@lit/reactive-element": "/node_modules/@lit/reactive-element/reactive-element.js",
-    "@lit/reactive-element/": "/node_modules/@lit/reactive-element/"
-  }
-}
+<script>
+  // ?lit=2 runs every scenario against Lit 2 instead of Lit 3.
+  const lit2 = new URLSearchParams(location.search).get("lit") === "2";
+  const base = lit2 ? "/node_modules/lit2/node_modules/" : "/node_modules/";
+  const lit = lit2 ? "/node_modules/lit2/" : "/node_modules/lit/";
+  const map = document.createElement("script");
+  map.type = "importmap";
+  map.textContent = JSON.stringify({
+    imports: {
+      "lit": lit + "index.js",
+      "lit/": lit,
+      "lit-html": base + "lit-html/lit-html.js",
+      "lit-html/": base + "lit-html/",
+      "lit-element/": base + "lit-element/",
+      "@lit/reactive-element": base + "@lit/reactive-element/reactive-element.js",
+      "@lit/reactive-element/": base + "@lit/reactive-element/",
+    },
+  });
+  document.currentScript.after(map);
 </script>
 <body>
 <script type="module">
@@ -340,7 +347,7 @@
     },
 
     async changeDuringCommitIsCascade() {
-      const { ref } = await import("/node_modules/lit-html/directives/ref.js");
+      const { ref } = await import("lit/directives/ref.js");
       class LitRef extends LitElement {
         static properties = { v: { type: Number }, measured: { state: true } };
         constructor() { super(); this.v = 0; this.measured = 0; trackLitUpdates(this); }
@@ -442,6 +449,164 @@
       let threw = null;
       try { definePerf("notvalid", BadName); } catch (e) { threw = e.name; }
       return { threw, untouched: BadName.prototype.connectedCallback === before, canRetry: (() => { definePerf("now-valid", BadName); return true; })() };
+    },
+
+    // ---- Gaps found by coverage -----------------------------------------
+
+    async productionVersionWorks() {
+      const prod = await import("/dist/production/index.js");
+      const prodLit = await import("/dist/production/adapters/lit.js");
+      let connected = false;
+      class ProdEl extends HTMLElement { connectedCallback() { connected = true; } }
+      class ProdLit extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 1; prodLit.trackLitUpdates(this); }
+        render() { return html`${this.v}`; }
+      }
+      customElements.define("prod-lit", ProdLit);
+      const lit = new ProdLit();
+      const got = await collect(async () => {
+        prod.definePerf("prod-el", ProdEl);
+        document.body.append(document.createElement("prod-el"), lit);
+        await lit.updateComplete;
+      });
+      return {
+        defined: customElements.get("prod-el") === ProdEl,
+        connected,
+        litRendered: lit.renderRoot.textContent.trim(),
+        bars: got.length,
+      };
+    },
+
+    async inheritedCallbacksRestoredAfterFailedDefine() {
+      class BaseR extends HTMLElement { connectedCallback() {} }
+      class SubR extends BaseR {}
+      const baseBefore = BaseR.prototype.connectedCallback;
+      let threw = null;
+      try { definePerf("notvalidtoo", SubR); } catch (e) { threw = e.name; }
+      return {
+        threw,
+        subHasOwn: Object.prototype.hasOwnProperty.call(SubR.prototype, "connectedCallback"),
+        baseUntouched: BaseR.prototype.connectedCallback === baseBefore,
+      };
+    },
+
+    async turnedOffAfterDefining() {
+      let calls = 0;
+      class LateOff extends HTMLElement { connectedCallback() { calls++; work(1); } }
+      definePerf("late-off", LateOff);
+      configure({ enabled: false });
+      const got = await collect(() => document.body.append(document.createElement("late-off")));
+      configure({ enabled: true });
+      return { calls, bars: got.length };
+    },
+
+    async onlyChosenCallbacks() {
+      class Picky extends HTMLElement {
+        static observedAttributes = ["x"];
+        connectedCallback() { work(1); }
+        attributeChangedCallback() { work(1); }
+      }
+      instrumentElement(Picky, { callbacks: ["connectedCallback"] });
+      customElements.define("picky-el", Picky);
+      const el = document.createElement("picky-el");
+      const got = await collect(() => { document.body.append(el); el.setAttribute("x", "1"); });
+      return names(on("Components", got));
+    },
+
+    async cascadeDuringFirstUpdate() {
+      class LitFirstCascade extends LitElement {
+        static properties = { ready: { type: Boolean } };
+        constructor() { super(); this.ready = false; trackLitUpdates(this); }
+        render() { return html`${this.ready}`; }
+        firstUpdated() { this.ready = true; }
+      }
+      customElements.define("lit-first-cascade", LitFirstCascade);
+      const el = new LitFirstCascade();
+      const got = await collect(async () => { document.body.append(el); await el.updateComplete; await el.updateComplete; });
+      return on("Scheduler", got).find((b) => b.name === "Cascading Update")?.props["Requested during"];
+    },
+
+    async removedBeforeFirstUpdate() {
+      class LitGone extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { return html`${this.v}`; }
+      }
+      customElements.define("lit-gone", LitGone);
+      const el = new LitGone();
+      const got = await collect(async () => {
+        document.body.append(el);
+        el.remove(); // before Lit's first update runs
+        await el.updateComplete;
+        await new Promise((r) => setTimeout(r, 40));
+        document.body.append(el);
+        el.v = 1;
+        await el.updateComplete;
+      });
+      return {
+        rendered: el.renderRoot.textContent.trim(),
+        longestUpdateWait: Math.max(0, ...on("Scheduler", got).filter((b) => b.name.startsWith("Update")).map((b) => b.duration)),
+      };
+    },
+
+    async unreadablePropertyStillUpdates() {
+      class LitTricky extends LitElement {
+        static properties = { secret: { noAccessor: true } };
+        constructor() { super(); this._secret = 0; this.locked = false; trackLitUpdates(this); }
+        get secret() { if (this.locked) throw new Error("locked"); return this._secret; }
+        set secret(v) { const old = this._secret; this._secret = v; this.requestUpdate("secret", old); this.locked = true; }
+        render() { return html`${this._secret}`; }
+      }
+      customElements.define("lit-tricky", LitTricky);
+      const el = new LitTricky();
+      document.body.append(el);
+      await el.updateComplete;
+      el.locked = false;
+      await frame();
+      let error = null;
+      const got = await collect(async () => { el.secret = 5; try { await el.updateComplete; } catch (e) { error = e.message; } });
+      return { error, rendered: el.renderRoot.textContent.trim(), rows: on("Components", got).find((b) => b.name === "lit-tricky")?.rows };
+    },
+
+    async lightDomCustomEvent() {
+      class LitTarget extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { return html`${this.v}`; }
+      }
+      customElements.define("lit-target", LitTarget);
+      const target = new LitTarget();
+      const button = document.createElement("div");
+      document.body.append(target, button);
+      await target.updateComplete;
+      button.addEventListener("my-event", () => { work(1); target.v++; });
+      const got = await collect(async () => { button.dispatchEvent(new CustomEvent("my-event")); await target.updateComplete; });
+      return names(on("Scheduler", got)).filter((n) => n.startsWith("Event"));
+    },
+
+    async customizedBuiltIn() {
+      const prod = await import("/dist/production/index.js");
+      class FancyButton extends HTMLButtonElement { connectedCallback() { work(1); } }
+      class PlainFancy extends HTMLButtonElement {}
+      let fancy;
+      const got = await collect(() => {
+        definePerf("fancy-button", FancyButton, { extends: "button" });
+        prod.definePerf("plain-fancy", PlainFancy, { extends: "button" });
+        fancy = document.createElement("button", { is: "fancy-button" });
+        document.body.append(fancy);
+      });
+      const made = document.createElement("button", { is: "plain-fancy" });
+      return {
+        devWorks: fancy instanceof FancyButton,
+        prodWorks: made instanceof PlainFancy,
+        bars: names(on("Components", got)),
+      };
+    },
+
+    async elementsPreviewAsTags() {
+      const { preview } = await import("/dist/emit.js");
+      return preview(document.createElement("my-thing"));
     },
 
     async disabledDoesNotPatch() {

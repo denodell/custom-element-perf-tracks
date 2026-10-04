@@ -160,3 +160,151 @@ test("Stencil timings are copied onto the React-style tracks, once each", async 
     ["my-widget", "Components", "secondary", 7, 2],
   ]);
 });
+
+// ---- Value formatting, colors and safety nets ----------------------------
+
+import { preview, renderColor, effectColor, createTask } from "../dist/emit.js";
+import { observeStencilProfile as observeAgain } from "../dist/adapters/stencil.js";
+
+test("preview formats each kind of value briefly, like React's Changed Props", () => {
+  class Point {}
+  const fn = function onTap() {};
+  assert.equal(preview("hi"), '"hi"');
+  assert.equal(preview("x".repeat(60)), JSON.stringify("x".repeat(50) + "…"));
+  assert.equal(preview(42), "42");
+  assert.equal(preview(true), "true");
+  assert.equal(preview(undefined), "undefined");
+  assert.equal(preview(null), "null");
+  assert.equal(preview(10n), "10");
+  assert.equal(preview(Symbol("s")), "Symbol(s)");
+  assert.equal(preview(fn), "ƒ onTap()");
+  assert.equal(preview(() => {}), "ƒ anonymous()");
+  assert.equal(preview([1, 2, 3]), "Array(3)");
+  assert.equal(preview({ a: 1 }), "{…}");
+  assert.equal(preview(Object.create(null)), "{…}");
+  assert.equal(preview(new Point()), "Point {…}");
+  assert.equal(preview(new Date(0)), "1970-01-01T00:00:00.000Z");
+  assert.equal(preview(new Date("nope")), "Invalid Date");
+});
+
+test("preview never throws, whatever the value", () => {
+  const hostile = new Proxy({}, { get() { throw new Error("no"); }, getPrototypeOf() { throw new Error("no"); } });
+  assert.equal(preview(hostile), "(could not display)");
+});
+
+test("render and effect colors use React's thresholds", () => {
+  assert.deepEqual([0.4, 0.5, 9.9, 10, 99, 100].map(renderColor), [
+    "primary-light", "primary", "primary", "primary-dark", "primary-dark", "error",
+  ]);
+  assert.deepEqual([0.9, 1, 99, 100, 499, 500].map(effectColor), [
+    "secondary-light", "secondary", "secondary", "secondary-dark", "secondary-dark", "error",
+  ]);
+});
+
+test("a bar whose details fail to build is still drawn, without details", async () => {
+  const { seen, stop } = collect();
+  emit("<d> still drawn", performance.now() - 1, performance.now(), {
+    track: "Components",
+    properties: () => { throw new Error("details broke"); },
+  });
+  await tick();
+  stop();
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].detail.devtools.properties, undefined);
+});
+
+test("if drawing itself fails, emit swallows the error", () => {
+  const measure = performance.measure;
+  performance.measure = () => { throw new Error("drawing broke"); };
+  try {
+    assert.doesNotThrow(() => emit("<d> x", 0, 1, { track: "Components" }));
+    assert.equal(timed("<d> y", { track: "Components" }, () => "kept"), "kept");
+  } finally {
+    performance.measure = measure;
+  }
+});
+
+test("timed reports non-Error throws and does nothing extra when disabled", async () => {
+  const { seen, stop } = collect();
+  assert.throws(() => timed("<t> str", { track: "Updates" }, () => { throw "plain string"; }));
+  configure({ enabled: false });
+  assert.equal(timed("<t> off", { track: "Updates" }, () => 7), 7);
+  configure({ enabled: true });
+  await tick();
+  stop();
+  assert.deepEqual(seen.map((e) => [e.name, e.detail.devtools.properties]), [["<t> str", [["Error", "plain string"]]]]);
+});
+
+test("createTask falls back to null when the console cannot make tasks", () => {
+  const original = console.createTask;
+  try {
+    console.createTask = undefined;
+    assert.equal(createTask("x"), null);
+    console.createTask = () => { throw new Error("no tasks"); };
+    assert.equal(createTask("x"), null);
+  } finally {
+    console.createTask = original;
+  }
+});
+
+test("rerouted errors go to console.error where reportError does not exist", async () => {
+  const tag = unique("e");
+  const original = globalThis.reportError;
+  const logged = [];
+  const error = console.error;
+  globalThis.reportError = undefined;
+  console.error = (e) => logged.push(e.message);
+  const unwatch = rerouteMeasures(new RegExp(`^\\[${tag}\\]`), () => { throw new Error("map broke"); });
+  performance.measure(`[${tag}] a`, { start: 0, end: 1 });
+  await tick();
+  unwatch();
+  globalThis.reportError = original;
+  console.error = error;
+  assert.deepEqual(logged, ["map broke"]);
+});
+
+test("Stencil: short connectedCallback and postUpdate timings are hidden", async () => {
+  configure({ minDuration: 0.5 });
+  // Watching picks up timings already recorded, so start from an empty buffer.
+  performance.clearMeasures();
+  const { seen, stop } = collect();
+  const unwatch = observeAgain();
+  const t = performance.now();
+  performance.measure("[Stencil] connectedCallback() <tiny-widget>", { start: t, end: t + 0.1 });
+  performance.measure("[Stencil] postUpdate() <tiny-widget>", { start: t, end: t + 0.1 });
+  performance.measure("[Stencil] postUpdate() <tiny-widget>", { start: t, end: t + 2 });
+  await tick();
+  unwatch();
+  stop();
+  configure({ minDuration: 0.05 });
+  assert.deepEqual(seen.map((e) => Math.round(e.duration)), [2]);
+});
+
+// ---- The empty production version ----------------------------------------
+
+test("the production version has exactly the same exports, and does nothing", async () => {
+  const dev = await import("../dist/index.js");
+  const prod = await import("../dist/production/index.js");
+  const devLit = await import("../dist/adapters/lit.js");
+  const prodLit = await import("../dist/production/adapters/lit.js");
+  const devStencil = await import("../dist/adapters/stencil.js");
+  const prodStencil = await import("../dist/production/adapters/stencil.js");
+  assert.deepEqual(Object.keys(prod).sort(), Object.keys(dev).sort());
+  assert.deepEqual(Object.keys(prodLit).sort(), Object.keys(devLit).sort());
+  assert.deepEqual(Object.keys(prodStencil).sort(), Object.keys(devStencil).sort());
+  assert.deepEqual(prod.Tracks, dev.Tracks);
+  assert.deepEqual(Object.keys(prod.getConfig()).sort(), Object.keys(dev.getConfig()).sort());
+
+  const { seen, stop } = collect();
+  assert.equal(prod.timed("x", { track: "Components" }, () => 5), 5);
+  prod.emit("x", 0, 1, { track: "Components" });
+  prod.configure({ enabled: true });
+  assert.equal(prod.getConfig().enabled, false);
+  assert.equal(typeof prod.rerouteMeasures(/x/, () => null), "function");
+  assert.equal(typeof prodStencil.observeStencilProfile(), "function");
+  prodLit.trackLitUpdates({});
+  prod.instrumentElement(class {});
+  await tick();
+  stop();
+  assert.equal(seen.length, 0);
+});
