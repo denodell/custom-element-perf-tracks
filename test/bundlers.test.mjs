@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // Strings that only exist in the real (development) code.
-const MARKERS = ["track-entry", "elements upgraded", "changes batched", "PerformanceObserver"];
+const MARKERS = ["track-entry", "Elements upgraded", "Changes batched", "Cascading Update", "PerformanceObserver"];
 
 const APP = `
 import { definePerf, configure } from "custom-element-perf-tracks";

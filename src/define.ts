@@ -1,4 +1,16 @@
-import { Tracks, isEnabled, now, emit, type TrackColor } from "./emit.js";
+import {
+  ADDED,
+  REMOVED,
+  Tracks,
+  emit,
+  isEnabled,
+  minDuration,
+  now,
+  preview,
+  withError,
+  type EmitOptions,
+  type TrackColor,
+} from "./emit.js";
 
 export type LifecycleCallback =
   | "connectedCallback"
@@ -13,9 +25,11 @@ const LIFECYCLE: readonly LifecycleCallback[] = [
   "adoptedCallback",
 ];
 
+// React colors mounting and unmounting with "warning"; other callbacks use
+// the same blue as component renders.
 const COLORS: Record<LifecycleCallback, TrackColor> = {
-  connectedCallback: "primary",
-  disconnectedCallback: "primary-dark",
+  connectedCallback: "warning",
+  disconnectedCallback: "warning",
   attributeChangedCallback: "primary-light",
   adoptedCallback: "primary-light",
 };
@@ -48,13 +62,9 @@ export function labelFor(el: Element): string {
   return registered ?? el.localName;
 }
 
-function show(value: unknown): string {
-  return value === null ? "(none)" : String(value);
-}
-
 /**
  * Wrap a custom element class's lifecycle callbacks so each call shows up as
- * a bar on the "Lifecycle" track. Works on any class, including Lit, Stencil
+ * a bar on the "Components" track. Works on any class, including Lit, Stencil
  * and hand-written elements.
  *
  * Call it before the class is passed to `customElements.define`: browsers
@@ -66,16 +76,22 @@ export function instrumentElement(
   ctor: CustomElementConstructor,
   options: InstrumentOptions = {},
 ): void {
-  if (!isEnabled()) return;
+  instrument(ctor, options);
+}
+
+/** Returns a function that puts the class back the way it was. */
+function instrument(ctor: CustomElementConstructor, options: InstrumentOptions): () => void {
+  const nothing = () => {};
+  if (!isEnabled()) return nothing;
   const proto = ctor.prototype as Record<PropertyKey, unknown>;
-  if (Object.prototype.hasOwnProperty.call(proto, PATCHED)) return;
+  if (Object.prototype.hasOwnProperty.call(proto, PATCHED)) return nothing;
 
   if (typeof customElements !== "undefined" && customElements.getName?.(ctor)) {
     console.warn(
       `custom-element-perf-tracks: <${customElements.getName(ctor)}> is already defined, ` +
         "so its lifecycle callbacks can no longer be timed. Instrument it before defining it.",
     );
-    return;
+    return nothing;
   }
 
   const patches: Array<[LifecycleCallback, PropertyDescriptor]> = [];
@@ -99,25 +115,34 @@ export function instrumentElement(
       }
 
       const start = now();
+      let error: unknown;
       let failed = true;
       try {
         const result = call();
         failed = false;
         return result;
+      } catch (e) {
+        error = e;
+        throw e;
       } finally {
         active.delete(cb);
-        emit(`<${labelFor(this)}> ${label}`, start, now(), {
-          track: Tracks.lifecycle,
-          color: failed ? "error" : color,
-          properties:
-            cb === "attributeChangedCallback"
-              ? () => [
-                  ["attribute", String(args[0])],
-                  ["from", show(args[1])],
-                  ["to", show(args[2])],
-                ]
-              : undefined,
-        });
+        const end = now();
+        // Like React's effects, very short callbacks are not drawn.
+        if (failed || end - start >= minDuration()) {
+          const options: EmitOptions = {
+            track: Tracks.components,
+            color,
+            properties:
+              cb === "attributeChangedCallback"
+                ? () => [
+                    ["Changed Attribute", ""],
+                    [REMOVED + String(args[0]), preview(args[1])],
+                    [ADDED + String(args[0]), preview(args[2])],
+                  ]
+                : undefined,
+          };
+          emit(`${labelFor(this)} ${label}`, start, end, failed ? withError(options, error) : options);
+        }
       }
     };
     Object.defineProperty(wrapped, "name", { value: (original as { name: string }).name });
@@ -125,8 +150,17 @@ export function instrumentElement(
     patches.push([cb, { value: wrapped, writable: true, configurable: true, enumerable: false }]);
   }
 
+  const originals = patches.map(([cb]) => [cb, Object.getOwnPropertyDescriptor(proto, cb)] as const);
   for (const [cb, descriptor] of patches) Object.defineProperty(proto, cb, descriptor);
-  Object.defineProperty(proto, PATCHED, { value: true });
+  Object.defineProperty(proto, PATCHED, { value: true, configurable: true });
+
+  return () => {
+    for (const [cb, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(proto, cb, descriptor);
+      else delete proto[cb];
+    }
+    delete proto[PATCHED];
+  };
 }
 
 /**
@@ -146,7 +180,7 @@ export function definePerf(
     customElements.define(tagName, ctor, options); // throws the browser's own error
     return;
   }
-  instrumentElement(ctor, options);
+  const restore = instrument(ctor, options ?? {});
   if (!isEnabled()) {
     customElements.define(tagName, ctor, options);
     return;
@@ -163,12 +197,16 @@ export function definePerf(
   try {
     customElements.define(tagName, ctor, options);
     failed = false;
+  } catch (error) {
+    // An invalid name, for example: leave the class as it was.
+    restore();
+    throw error;
   } finally {
     upgrading = previous;
-    emit(`<${tagName}> define`, start, now(), {
+    emit(`${tagName} define`, start, now(), {
       track: Tracks.upgrade,
       color: failed ? "error" : "tertiary",
-      properties: countable ? [["elements upgraded", String(current.count)]] : undefined,
+      properties: countable ? [["Elements upgraded", String(current.count)]] : undefined,
     });
   }
 }

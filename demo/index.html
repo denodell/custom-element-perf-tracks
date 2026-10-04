@@ -32,25 +32,24 @@
   button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
   button:hover { border-color: var(--muted); }
   #stage { display: none; }
-  #log { font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; color: var(--muted); max-height: 200px; overflow: auto; }
   code { font-size: 0.92em; }
 </style>
 </head>
 <body>
 <main>
   <h1>custom-element-perf-tracks</h1>
-  <p class="lede">Each button does some component work. The library draws that work as bars in the Chrome DevTools Performance panel.</p>
+  <p class="lede">Each button does some component work. The library draws that work as bars in the Chrome DevTools Performance panel, laid out like React's own performance tracks.</p>
 
   <ol>
     <li>Open DevTools and go to the <b>Performance</b> panel.</li>
     <li>Press record, click a few buttons below, then stop.</li>
-    <li>Look for a group called <b>Web Components</b> with <b>Lifecycle</b>, <b>Upgrade</b> and <b>Updates</b> tracks. Click a bar to see its details.</li>
+    <li>Open the <b>Web Components</b> group. <b>Scheduler</b> shows each update's steps, <b>Components</b> shows which element did the work, and <b>Upgrade</b> shows <code>customElements.define</code>. Click a bar to see its details.</li>
   </ol>
-  <p class="lede">Bars have details by default. Add <code>?strategy=timestamp</code> to the address for the lighter mode, which has no details and no log below.</p>
+  <p class="lede">Add <code>?strategy=timestamp</code> to the address for the lightest mode, where bars have no details.</p>
 
   <section>
     <h2>Plain custom element</h2>
-    <p class="track">Feeds the Upgrade and Lifecycle tracks, via <code>definePerf</code></p>
+    <p class="track">Upgrade and Components tracks, via <code>definePerf</code></p>
     <div class="buttons">
       <button id="v-define">Define (upgrades 20 elements)</button>
       <button id="v-add">Add one</button>
@@ -60,26 +59,22 @@
   </section>
 
   <section>
-    <h2>Lit element</h2>
-    <p class="track">Feeds the Updates track, via <code>trackLitUpdates</code></p>
+    <h2>Lit elements</h2>
+    <p class="track">Scheduler and Components tracks, via <code>trackLitUpdates</code>. A counter passes its count to a child badge.</p>
     <div class="buttons">
       <button id="l-one">Change once</button>
       <button id="l-five">Change 5 times (Lit updates once)</button>
       <button id="l-heavy">Slow render</button>
+      <button id="l-cascade">Cascading update</button>
     </div>
   </section>
 
   <section>
     <h2>Stencil (simulated)</h2>
-    <p class="track">Feeds the Updates track, via <code>observeStencilProfile</code></p>
+    <p class="track">Scheduler and Components tracks, via <code>observeStencilProfile</code></p>
     <div class="buttons">
       <button id="s-cycle">Fake a Stencil update</button>
     </div>
-  </section>
-
-  <section>
-    <h2>Log</h2>
-    <div id="log">Nothing yet.</div>
   </section>
 
   <div id="stage"></div>
@@ -91,27 +86,13 @@
   import { trackLitUpdates } from "../dist/adapters/lit.js";
   import { LitElement, html } from "lit";
 
-  // Add ?strategy=timestamp to the URL to try the lighter console.timeStamp mode.
-  const strategy = new URLSearchParams(location.search).get("strategy") === "timestamp" ? "timestamp" : "measure";
-  configure({ strategy });
+  // ?strategy=timestamp or ?strategy=measure to try the other drawing modes.
+  const strategy = new URLSearchParams(location.search).get("strategy");
+  if (strategy === "timestamp" || strategy === "measure") configure({ strategy });
 
   const stage = document.getElementById("stage");
-  const logEl = document.getElementById("log");
-  let logged = false;
-  function log(line) {
-    if (!logged) { logEl.textContent = ""; logged = true; }
-    logEl.textContent = line + "\n" + logEl.textContent;
-  }
   // Busy-wait so the bars are wide enough to spot.
   function work(ms) { const end = performance.now() + ms; while (performance.now() < end) {} }
-
-  // Mirror our own entries into the log. The real output is in DevTools.
-  new PerformanceObserver((list) => {
-    for (const e of list.getEntries()) {
-      const d = e.detail?.devtools;
-      if (d) log(`${d.track.padEnd(9)} ${e.name}  ${e.duration.toFixed(1)} ms`);
-    }
-  }).observe({ type: "measure" });
 
   // --- Plain custom element ---------------------------------------------
   class DemoCard extends HTMLElement {
@@ -126,7 +107,7 @@
     stage.append(el);
   }
   document.getElementById("v-define").onclick = (e) => {
-    if (customElements.get("demo-card")) return log("demo-card is already defined. Reload to try again.");
+    if (customElements.get("demo-card")) return;
     definePerf("demo-card", DemoCard);
     e.target.disabled = true;
   };
@@ -138,36 +119,72 @@
   document.getElementById("v-attr").onclick = () => {
     stage.querySelector("demo-card")?.setAttribute("label", `changed ${Date.now() % 1000}`);
   };
-  document.getElementById("v-remove").onclick = () => stage.replaceChildren();
+  document.getElementById("v-remove").onclick = () => stage.querySelectorAll("demo-card").forEach((el) => el.remove());
 
-  // --- Lit element ------------------------------------------------------
+  // --- Lit elements -----------------------------------------------------
+  class DemoBadge extends LitElement {
+    static properties = { value: { type: Number } };
+    constructor() { super(); this.value = 0; trackLitUpdates(this); }
+    render() { work(0.5); return html`<b>${this.value}</b>`; }
+  }
+  customElements.define("demo-badge", DemoBadge);
+
   class DemoCounter extends LitElement {
-    static properties = { count: { type: Number } };
-    constructor() { super(); this.count = 0; this.slow = false; trackLitUpdates(this); }
+    static properties = { count: { type: Number }, doubled: { type: Number } };
+    constructor() {
+      super();
+      this.count = 0;
+      this.doubled = 0;
+      this.slow = false; // plain fields, so changing them causes no update
+      this.cascade = false;
+      trackLitUpdates(this);
+    }
+    willUpdate() { work(0.5); }
     render() {
-      // 1ms so every bar is wide enough to draw; "slow" is a plain field, so no extra update.
       work(this.slow ? 25 : 1);
       this.slow = false;
-      return html`<span>${this.count}</span>`;
+      return html`<span>${this.count} (${this.doubled})</span> <demo-badge .value=${this.count}></demo-badge>`;
+    }
+    updated(changed) {
+      work(1);
+      // The mistake Lit warns about: deriving state in updated() causes a
+      // second update. willUpdate() is the right place for this.
+      if (this.cascade && changed.has("count")) {
+        this.cascade = false;
+        this.doubled = this.count * 2;
+      }
     }
   }
   customElements.define("demo-counter", DemoCounter);
   const counter = document.createElement("demo-counter");
   stage.append(counter);
 
-  document.getElementById("l-one").onclick = () => { counter.count++; };
-  document.getElementById("l-five").onclick = () => { for (let i = 0; i < 5; i++) counter.count++; };
-  document.getElementById("l-heavy").onclick = () => { counter.slow = true; counter.count++; };
+  // Each handler does a little work first, so "Event: click" is easy to see.
+  document.getElementById("l-one").onclick = () => { work(1); counter.count++; };
+  document.getElementById("l-five").onclick = () => { work(1); for (let i = 0; i < 5; i++) counter.count++; };
+  document.getElementById("l-heavy").onclick = () => { work(1); counter.slow = true; counter.count++; };
+  document.getElementById("l-cascade").onclick = () => { work(1); counter.cascade = true; counter.count++; };
 
   // --- Stencil (simulated) ----------------------------------------------
-  // Writes measures in the same format Stencil's --profile build does.
+  // Writes measures in the same format and order as a Stencil dev or
+  // --profile build: update() wraps render() (which includes patching the
+  // page), then postUpdate() runs the componentDidUpdate hooks.
   observeStencilProfile();
+  const tag = "fake-stencil-widget";
+  const measure = (fn, start) => performance.measure(`[Stencil] ${fn}() <${tag}>`, { start, end: performance.now() });
   document.getElementById("s-cycle").onclick = () => {
-    for (const [fn, ms] of [["scheduleUpdate", 1], ["render", 6], ["postUpdate", 1]]) {
-      const start = performance.now();
-      work(ms);
-      performance.measure(`[Stencil] ${fn}() <fake-stencil-widget>`, { start, end: performance.now() });
-    }
+    const scheduled = performance.now();
+    work(1);
+    measure("scheduleUpdate", scheduled);
+    const update = performance.now();
+    work(0.5);
+    const render = performance.now();
+    work(8);
+    measure("render", render);
+    measure("update", update);
+    const post = performance.now();
+    work(1);
+    measure("postUpdate", post);
   };
 </script>
 </body>

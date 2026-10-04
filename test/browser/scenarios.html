@@ -17,15 +17,28 @@
 <body>
 <script type="module">
   // Each scenario returns plain data; test/browser.test.mjs makes the assertions.
-  import { configure, definePerf, instrumentElement, emit } from "/dist/index.js";
+  // Bars are read back through PerformanceObserver, so these run with the
+  // "measure" strategy, which draws every bar as a measure.
+  import { configure, getConfig, definePerf, instrumentElement, emit } from "/dist/index.js";
   import { trackLitUpdates } from "/dist/adapters/lit.js";
   import { LitElement, html } from "lit";
+
+  configure({ strategy: "measure", minDuration: 0 });
 
   const bars = [];
   new PerformanceObserver((list) => {
     for (const e of list.getEntries()) {
       const d = e.detail?.devtools;
-      if (d) bars.push({ name: e.name, track: d.track, color: d.color, props: Object.fromEntries(d.properties ?? []), duration: e.duration });
+      if (d) bars.push({
+        name: e.name,
+        track: d.track,
+        color: d.color,
+        rows: d.properties ?? [],
+        props: Object.fromEntries(d.properties ?? []),
+        start: e.startTime,
+        end: e.startTime + e.duration,
+        duration: e.duration,
+      });
     }
   }).observe({ type: "measure" });
 
@@ -38,16 +51,42 @@
     await frame();
     return bars.splice(0);
   }
+  const on = (track, list) => list.filter((b) => b.track === track);
+  const names = (list) => list.map((b) => b.name);
 
   const scenarios = {
-    async userMeasuresSurvive() {
-      performance.measure("<keep-me> connected", { start: 0, end: 1 });
-      class KeepMe extends HTMLElement { connectedCallback() {} }
-      definePerf("keep-me", KeepMe);
-      document.body.append(document.createElement("keep-me"));
-      await frame();
-      // The page's own measure is still there, next to the library's bar.
-      return performance.getEntriesByName("<keep-me> connected").filter((e) => !e.detail?.devtools).length;
+    // ---- Drawing ---------------------------------------------------------
+
+    async autoStrategyLeavesBufferAlone() {
+      configure({ strategy: "auto" });
+      performance.measure("auto-el", { start: 0, end: 1 });
+      const before = performance.getEntriesByType("measure").length;
+      // One bar with details (measure, then cleared) and one without (timeStamp).
+      emit("auto-el", performance.now() - 2, performance.now(), { track: "Components", properties: [["k", "v"]] });
+      emit("auto-el", performance.now() - 2, performance.now(), { track: "Components" });
+      const after = performance.getEntriesByType("measure").length;
+      const userMeasureKept = performance.getEntriesByName("auto-el").length;
+      configure({ strategy: "measure" });
+      return { added: after - before, userMeasureKept };
+    },
+
+    async timestampStrategyAddsNothingToBuffer() {
+      configure({ strategy: "timestamp" });
+      const before = performance.getEntriesByType("measure").length;
+      emit("ts thing", performance.now() - 2, performance.now(), { track: "Components", properties: [["k", "v"]] });
+      const after = performance.getEntriesByType("measure").length;
+      configure({ strategy: "measure" });
+      return after - before;
+    },
+
+    // ---- Lifecycle callbacks -------------------------------------------
+
+    async lifecycleOnComponentsTrack() {
+      class LcEl extends HTMLElement { connectedCallback() { work(1); } disconnectedCallback() { work(1); } }
+      definePerf("lc-el", LcEl);
+      const el = document.createElement("lc-el");
+      const got = await collect(() => { document.body.append(el); el.remove(); });
+      return on("Components", got).map((b) => [b.name, b.color]);
     },
 
     async inheritanceBaseFirst() {
@@ -55,8 +94,7 @@
       class SubA extends BaseA { connectedCallback() { super.connectedCallback(); } }
       definePerf("base-a", BaseA);
       definePerf("sub-a", SubA);
-      return (await collect(() => document.body.append(document.createElement("sub-a"))))
-        .filter((b) => b.track === "Lifecycle").map((b) => b.name);
+      return names(on("Components", await collect(() => document.body.append(document.createElement("sub-a")))));
     },
 
     async inheritanceSubFirst() {
@@ -64,10 +102,25 @@
       class SubB extends BaseB {}
       definePerf("sub-b", SubB);
       definePerf("base-b", BaseB);
-      return (await collect(() => {
+      return names(on("Components", await collect(() => {
         document.body.append(document.createElement("sub-b"));
         document.body.append(document.createElement("base-b"));
-      })).filter((b) => b.track === "Lifecycle").map((b) => b.name);
+      })));
+    },
+
+    async shortCallbacksHidden() {
+      // Browsers round timestamps to 0.1 ms, so use a cut-off well above that.
+      configure({ minDuration: 0.5 });
+      class Quick extends HTMLElement { connectedCallback() {} }
+      class Slow extends HTMLElement { connectedCallback() { work(1); } }
+      definePerf("quick-el", Quick);
+      definePerf("slow-el", Slow);
+      const got = await collect(() => {
+        document.body.append(document.createElement("quick-el"));
+        document.body.append(document.createElement("slow-el"));
+      });
+      configure({ minDuration: 0 });
+      return names(on("Components", got));
     },
 
     async failedDefineLeavesClassAlone() {
@@ -87,7 +140,8 @@
       document.body.append(host);
       class ShadowKid extends HTMLElement { connectedCallback() {} }
       const got = await collect(() => definePerf("shadow-kid", ShadowKid));
-      return got.find((b) => b.track === "Upgrade")?.props["elements upgraded"];
+      const bar = on("Upgrade", got)[0];
+      return { name: bar?.name, count: bar?.props["Elements upgraded"] };
     },
 
     async throwingCallback() {
@@ -96,16 +150,16 @@
       const el = new Boom();
       let message = null;
       const got = await collect(() => { try { el.connectedCallback(); } catch (e) { message = e.message; } });
-      return { message, colors: got.map((b) => b.color) };
+      return { message, bars: got.map((b) => [b.color, b.props.Error]) };
     },
 
-    async attributeRemovedShowsNone() {
+    async attributeDiff() {
       class AttrEl extends HTMLElement { static observedAttributes = ["x"]; attributeChangedCallback() {} }
       definePerf("attr-el", AttrEl);
       const el = document.createElement("attr-el");
       el.setAttribute("x", "1");
       const got = await collect(() => el.removeAttribute("x"));
-      return got[0]?.props;
+      return { name: got[0]?.name, rows: got[0]?.rows };
     },
 
     async instrumentAfterDefineWarns() {
@@ -119,33 +173,131 @@
       return warnings.length;
     },
 
-    async litBatchingAndNoOps() {
+    // ---- Lit -----------------------------------------------------------
+
+    async litFirstUpdate() {
+      class LitFirst extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 1; trackLitUpdates(this); }
+        render() { work(1); return html`${this.v}`; }
+        firstUpdated() { work(1); }
+      }
+      customElements.define("lit-first", LitFirst);
+      const el = new LitFirst();
+      await new Promise((r) => setTimeout(r, 40)); // created, then connected later
+      const got = await collect(async () => { document.body.append(el); await el.updateComplete; });
+      const components = on("Components", got);
+      const mount = components.find((b) => b.name === "Mount");
+      return {
+        scheduler: names(on("Scheduler", got)),
+        components: names(components),
+        mountWrapsAll: components.every((b) => b.start >= mount.start && b.end <= mount.end),
+        updateWait: on("Scheduler", got).find((b) => b.name.startsWith("Update"))?.duration,
+        changedPropsOnFirst: components.some((b) => "Changed Props" in b.props),
+      };
+    },
+
+    async litPhasesAndChangedProps() {
       class LitA extends LitElement {
-        static properties = { a: { type: Number }, b: { type: Number } };
-        constructor() { super(); this.a = 0; this.b = 0; trackLitUpdates(this); }
-        render() { return html`${this.a}${this.b}`; }
+        static properties = { a: { type: Number }, b: { type: String } };
+        constructor() { super(); this.a = 0; this.b = "x"; trackLitUpdates(this); }
+        willUpdate() { work(4); }
+        render() { work(4); return html`${this.a}${this.b}`; }
+        updated() { work(4); }
       }
       customElements.define("lit-a", LitA);
       const el = new LitA();
       document.body.append(el);
       await el.updateComplete;
+      await frame();
+
       const five = await collect(async () => { for (let i = 0; i < 5; i++) el.a++; await el.updateComplete; });
-      const noop = await collect(async () => { el.b = 0; el.b = 0; el.requestUpdate(); await el.updateComplete; });
-      const two = await collect(async () => { el.a++; el.b++; await el.updateComplete; });
-      const pick = (g) => g.filter((b) => b.track === "Updates").map((b) => ({ name: b.name, ...b.props }));
-      return { five: pick(five), noop: pick(noop), two: pick(two) };
+      const noop = await collect(async () => { el.b = "x"; el.b = "x"; el.requestUpdate(); await el.updateComplete; });
+
+      const sched = on("Scheduler", five);
+      const render = sched.find((b) => b.name === "Render");
+      const commit = sched.find((b) => b.name === "Commit");
+      const comps = on("Components", five).filter((b) => b.name === "lit-a");
+      return {
+        scheduler: names(sched),
+        renderBeforeCommit: render.end <= commit.start + 0.001,
+        renderMs: render.duration,
+        commitMs: commit.duration,
+        componentBars: comps.length,
+        renderRows: comps[0].rows,
+        effectColor: comps[1]?.color,
+        noopRows: on("Components", noop).find((b) => b.name === "lit-a")?.rows,
+      };
     },
 
-    async litFirstUpdateWaits() {
-      class LitB extends LitElement {
-        constructor() { super(); trackLitUpdates(this); }
-        render() { return html`b`; }
+    async litUpdateBlockedAndEvent() {
+      class LitE extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { return html`<button @click=${this.onClick}>${this.v}</button>`; }
+        onClick() { work(3); this.v++; work(8); } // busy before and after the change
       }
-      customElements.define("lit-b", LitB);
-      const el = new LitB();
-      await new Promise((r) => setTimeout(r, 50));
-      const got = await collect(async () => { document.body.append(el); await el.updateComplete; });
-      return got.filter((b) => b.track === "Updates").map((b) => ({ name: b.name, ...b.props }));
+      customElements.define("lit-e", LitE);
+      const el = new LitE();
+      document.body.append(el);
+      await el.updateComplete;
+      const got = await collect(async () => { el.renderRoot.querySelector("button").click(); await el.updateComplete; });
+      const sched = on("Scheduler", got);
+      return {
+        scheduler: names(sched),
+        eventMs: sched.find((b) => b.name === "Event: click")?.duration,
+        updateRows: sched.find((b) => b.name === "Update Blocked")?.rows,
+      };
+    },
+
+    async litTriggeredByParent() {
+      class LitChild extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { return html`${this.v}`; }
+      }
+      class LitParent extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { return html`<lit-child .v=${this.v}></lit-child>`; }
+      }
+      customElements.define("lit-child", LitChild);
+      customElements.define("lit-parent", LitParent);
+      const el = new LitParent();
+      document.body.append(el);
+      await el.updateComplete;
+      await frame();
+      const child = el.renderRoot.querySelector("lit-child");
+      const got = await collect(async () => { el.v++; await el.updateComplete; await child.updateComplete; });
+      return {
+        scheduler: names(on("Scheduler", got)),
+        childRows: on("Components", got).find((b) => b.name === "lit-child")?.rows,
+      };
+    },
+
+    async litCascadingUpdate() {
+      class LitCascade extends LitElement {
+        static properties = { v: { type: Number }, doubled: { type: Number } };
+        constructor() { super(); this.v = 0; this.doubled = 0; trackLitUpdates(this); }
+        render() { return html`${this.doubled}`; }
+        updated(changed) { if (changed.has("v")) this.doubled = this.v * 2; } // the mistake Lit warns about
+      }
+      customElements.define("lit-cascade", LitCascade);
+      const el = new LitCascade();
+      document.body.append(el);
+      await el.updateComplete;
+      await el.updateComplete;
+      await frame();
+      const got = await collect(async () => { el.v = 5; await el.updateComplete; await el.updateComplete; });
+      const sched = on("Scheduler", got);
+      const cascade = sched.find((b) => b.name === "Cascading Update");
+      const inside = sched.filter((b) => b !== cascade && b.start >= cascade.start - 0.001 && b.end <= cascade.end + 0.001);
+      return {
+        scheduler: names(sched),
+        color: cascade?.color,
+        rows: cascade?.rows,
+        nested: names(inside),
+      };
     },
 
     async litSkippedAndFailed() {
@@ -159,27 +311,137 @@
       const el = new LitC();
       document.body.append(el);
       await el.updateComplete;
+      await frame();
       const out = [];
       out.push(...await collect(async () => { el.skip = true; el.v++; el.v++; await el.updateComplete; el.skip = false; }));
       out.push(...await collect(async () => { el.fail = true; el.v++; try { await el.updateComplete; } catch {} }));
       out.push(...await collect(async () => { el.v++; await el.updateComplete; }));
-      return out.filter((b) => b.track === "Updates").map((b) => ({ name: b.name, color: b.color, ...b.props }));
+      return on("Components", out).map((b) => [b.name, b.color, b.props["Changes batched"] ?? "1", b.props.Error ?? null]);
     },
 
-    async litBarIncludesWillUpdateAndUpdated() {
-      class LitD extends LitElement {
-        static properties = { v: { type: Number } };
-        constructor() { super(); this.v = 0; trackLitUpdates(this); }
-        willUpdate() { work(8); }
-        updated() { work(8); }
-        render() { return html`${this.v}`; }
+    // ---- Fixes from review ----------------------------------------------
+
+    async badValuesDoNotBreakUpdates() {
+      class LitBad extends LitElement {
+        static properties = { when: { attribute: false }, boom: { attribute: false } };
+        constructor() { super(); this.when = new Date(0); trackLitUpdates(this); }
+        render() { return html`x`; }
       }
-      customElements.define("lit-d", LitD);
-      const el = new LitD();
+      customElements.define("lit-bad", LitBad);
+      const el = new LitBad();
       document.body.append(el);
       await el.updateComplete;
-      const got = await collect(async () => { el.v++; await el.updateComplete; });
-      return got.find((b) => b.track === "Updates")?.duration;
+      let error = null;
+      const got = await collect(async () => {
+        el.when = new Date("not a date");
+        try { await el.updateComplete; } catch (e) { error = e.message; }
+      });
+      return { error, rows: on("Components", got).find((b) => b.name === "lit-bad")?.rows };
+    },
+
+    async changeDuringCommitIsCascade() {
+      const { ref } = await import("/node_modules/lit-html/directives/ref.js");
+      class LitRef extends LitElement {
+        static properties = { v: { type: Number }, measured: { state: true } };
+        constructor() { super(); this.v = 0; this.measured = 0; trackLitUpdates(this); }
+        render() { return html`<span ${ref((node) => { if (node && this.v) this.measured = this.v * 10; })}>${this.measured}</span>`; }
+      }
+      customElements.define("lit-ref", LitRef);
+      const el = new LitRef();
+      document.body.append(el);
+      await el.updateComplete;
+      await frame();
+      const got = await collect(async () => { el.v = 1; await el.updateComplete; await el.updateComplete; });
+      const sched = on("Scheduler", got);
+      return {
+        cascadeRows: sched.find((b) => b.name === "Cascading Update")?.rows,
+        secondRenderRows: on("Components", got).filter((b) => b.name === "lit-ref").map((b) => b.rows).find((r) => r.some(([k]) => k.endsWith("measured"))),
+      };
+    },
+
+    async nestedPerformUpdateKeepsOuter() {
+      class LitSelf extends LitElement {
+        static properties = { a: { type: Number } };
+        constructor() { super(); this.a = 0; trackLitUpdates(this); }
+        render() { return html`${this.a}`; }
+        updated() { if (this.a === 1) { this.a = 2; this.performUpdate(); } }
+      }
+      customElements.define("lit-self", LitSelf);
+      const el = new LitSelf();
+      document.body.append(el);
+      await el.updateComplete;
+      await frame();
+      const got = await collect(async () => { el.a = 1; await el.updateComplete; await frame(); });
+      return names(on("Components", got));
+    },
+
+    async updateBarBelongsToEachElement() {
+      class LitX extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { return html`${this.v}`; }
+      }
+      class LitLater extends LitX {
+        // Updates a frame later, like an element that defers its updates.
+        scheduleUpdate() { return new Promise((r) => requestAnimationFrame(r)).then(() => super.scheduleUpdate()); }
+      }
+      customElements.define("lit-x", LitX);
+      customElements.define("lit-later", LitLater);
+      const later = new LitLater();
+      const x = new LitX();
+      document.body.append(later, x);
+      await later.updateComplete;
+      await x.updateComplete;
+      await frame();
+      const got = await collect(async () => {
+        later.v = 1;
+        work(2);
+        x.v = 1;
+        work(2);
+        await x.updateComplete;
+        await later.updateComplete;
+      });
+      return on("Scheduler", got)
+        .filter((b) => b.name.startsWith("Update"))
+        .map((b) => b.props["Component name"]);
+    },
+
+    async changeEventInShadowDom() {
+      class LitCheck extends LitElement {
+        static properties = { checked: { type: Boolean } };
+        constructor() { super(); this.checked = false; trackLitUpdates(this); }
+        render() { return html`<input type="checkbox" @change=${(e) => { work(1); this.checked = e.target.checked; }}>`; }
+      }
+      customElements.define("lit-check", LitCheck);
+      const el = new LitCheck();
+      document.body.append(el);
+      await el.updateComplete;
+      const box = el.renderRoot.querySelector("input");
+      const got = await collect(async () => { box.click(); await el.updateComplete; });
+      return names(on("Scheduler", got)).filter((n) => n.startsWith("Event"));
+    },
+
+    async movedElementKeepsUpdateBar() {
+      class LitMove extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { return html`${this.v}`; }
+      }
+      customElements.define("lit-move", LitMove);
+      const el = new LitMove();
+      document.body.append(el);
+      await el.updateComplete;
+      await frame();
+      const got = await collect(async () => { el.v = 1; work(1); document.body.prepend(el); work(1); await el.updateComplete; });
+      return names(on("Scheduler", got)).filter((n) => n.startsWith("Update"));
+    },
+
+    async invalidNameLeavesClassAlone() {
+      class BadName extends HTMLElement { connectedCallback() {} }
+      const before = BadName.prototype.connectedCallback;
+      let threw = null;
+      try { definePerf("notvalid", BadName); } catch (e) { threw = e.name; }
+      return { threw, untouched: BadName.prototype.connectedCallback === before, canRetry: (() => { definePerf("now-valid", BadName); return true; })() };
     },
 
     async disabledDoesNotPatch() {
@@ -192,18 +454,9 @@
       const el = new OffLit();
       const litUntouched = !Object.prototype.hasOwnProperty.call(el, "requestUpdate");
       configure({ enabled: undefined }); // ignored, so still off
-      const stillOff = (await import("/dist/index.js")).getConfig().enabled === false;
+      const stillOff = getConfig().enabled === false;
       configure({ enabled: true });
       return { untouched: Off.prototype.connectedCallback === before, litUntouched, stillOff };
-    },
-
-    async timestampStrategyAddsNothingToBuffer() {
-      configure({ strategy: "timestamp" });
-      const before = performance.getEntriesByType("measure").length;
-      emit("<ts> thing", performance.now() - 2, performance.now(), { track: "Updates" });
-      const after = performance.getEntriesByType("measure").length;
-      configure({ strategy: "measure" });
-      return after - before;
     },
   };
 

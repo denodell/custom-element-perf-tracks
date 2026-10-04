@@ -1,20 +1,37 @@
 # custom-element-perf-tracks
 
-Shows your web components in the Chrome DevTools Performance panel.
+Shows your web components in the Chrome DevTools Performance panel, the same way React shows its components.
 
-![The Chrome DevTools Performance panel with a "Web Components" track group. The Upgrade track shows one wide bar for defining demo-card, and the Lifecycle track below it shows a bar for each element as it upgrades. The summary reports 20 elements upgraded in 60.5 ms.](docs/devtools-upgrade.png)
+React 19.2 added [performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks) to the Performance panel, so React developers can see what caused each update, how long each step took, and which components did the work. Web components had nothing like it. This library adds the same tracks for custom elements, Lit and Stencil, using Chrome's [Performance Extensibility API](https://developer.chrome.com/docs/devtools/performance/extension). The track names, step names and colors match React's, so anyone who has used React's tracks can read these straight away.
 
-React 19.2 added its own tracks to the Performance panel, so React developers can see which component rendered and how long it took. Web components had nothing like it. This library adds the same kind of tracks for custom elements, Lit and Stencil, using Chrome's [Performance Extensibility API](https://developer.chrome.com/docs/devtools/performance/extension).
+## What you see
 
-When you record a profile, a **Web Components** group appears in the flame chart with three tracks:
+When you record a profile, a **Web Components** group appears in the flame chart with three tracks.
 
-| Track | What it shows | Source |
-| --- | --- | --- |
-| **Upgrade** | The `customElements.define` call, which upgrades every matching element already in the page, including inside shadow roots | `definePerf` |
-| **Lifecycle** | Each `connected`, `disconnected`, `attributeChanged` and `adopted` callback, per element | `definePerf`, `instrumentElement`, Stencil |
-| **Updates** | Each Lit update, with how many changes Lit batched into it, or Stencil's own update timings | `trackLitUpdates`, `observeStencilProfile` |
+**Scheduler** shows each update as a row of steps, like React's Scheduler track:
 
-Clicking a bar shows more detail, such as which attribute changed, how many elements were upgraded, or which properties a Lit update picked up. Anything that throws gets a red bar.
+| Bar | What it covers |
+| --- | --- |
+| **Event: click** | The event handler that made the change, up to the change itself. Any user input event works, not only clicks. |
+| **Update** | The wait between the change and Lit starting the update. It becomes **Update Blocked** when the wait is over 5 ms, usually because the event handler kept running after making the change. |
+| **Render** | `shouldUpdate`, `willUpdate` and `render`. |
+| **Commit** | Writing the result to the page, then `firstUpdated` and `updated`. |
+| **Cascading Update** | Red, and wrapped around a whole extra update. The element changed its own properties after rendering, usually in `updated()`, so Lit had to update it a second time. Lit warns about this in development too. |
+
+**Components** shows which element did the work, like React's Components track:
+
+| Bar | What it covers |
+| --- | --- |
+| **my-element** (blue) | The element's render. Clicking it shows **Changed Props**, with each property's old and new value, the number of **Changes batched** into the update, and which element it was **Triggered by** when a parent passed it new values. |
+| **my-element** (purple) | The element's `firstUpdated()` and `updated()` work, in the color React uses for effects. |
+| **Mount** | Wraps an element's first update. |
+| **my-element connected** | Lifecycle callbacks: `connected`, `disconnected`, `attributeChanged` and `adopted`. Mounting and unmounting use React's warning color. Attribute changes show the old and new value. |
+
+Bars for renders and effects get darker as they get slower, using React's thresholds, and turn red at 100 ms for a render or 500 ms for effects.
+
+**Upgrade** has no React equivalent, because it's specific to web components. It shows each `customElements.define` call, which upgrades every matching element already in the page, including inside shadow roots. Clicking it shows how many elements were upgraded.
+
+Anything that throws gets a red bar with the error message.
 
 ## Install
 
@@ -34,7 +51,7 @@ import { definePerf } from "custom-element-perf-tracks";
 definePerf("my-card", MyCard);
 ```
 
-When something else defines the element, `instrumentElement(MyCard)` adds the Lifecycle track on its own. It has to run before the class is defined, because that's when the browser reads the lifecycle callbacks. If it runs later, it logs a warning and does nothing.
+This adds the Upgrade bar and the lifecycle callbacks. When something else defines the element, `instrumentElement(MyCard)` adds the lifecycle callbacks on their own. It has to run before the class is defined, because that's when the browser reads the lifecycle callbacks. If it runs later, it logs a warning and does nothing.
 
 Classes that extend each other can all be instrumented. You still get one bar per callback, named after the element that ran it.
 
@@ -54,15 +71,13 @@ class MyCounter extends LitElement {
 }
 ```
 
-Each bar covers Lit's whole update: `shouldUpdate`, `willUpdate`, `render` and writing the result to the page, then `firstUpdated` and `updated`. Clicking it shows:
+This adds the Scheduler track and the render and effect bars on the Components track. Lit elements can also use `definePerf` to get their lifecycle callbacks and the Upgrade bar.
 
-- **changes batched**: how many property changes Lit folded into this one update. Setting a property to the value it already has doesn't count.
-- **changed properties**: the names of those properties.
-- **waited before update**: the time between the first change and the update starting.
+A few details are specific to Lit:
 
-When `shouldUpdate` skips an update, you get a light "update skipped" bar. When an update throws, you get a red "update failed" bar.
-
-![A Lit update bar selected on the Updates track. The summary shows a 25 ms update, one change batched, the changed property "count", and the wait before the update.](docs/devtools-lit.png)
+- **Changes batched** counts only changes Lit accepts. Setting a property to the value it already has isn't counted, because Lit ignores it too.
+- An update that `shouldUpdate()` skips shows as a light "my-element skipped" bar.
+- The wait shown by **Update** starts when the element is connected, because Lit doesn't update elements until then.
 
 The Lit adapter uses only Lit's public API, and doesn't import Lit at runtime. It's tested with Lit 3 and should also work with Lit 2.
 
@@ -76,7 +91,9 @@ import { observeStencilProfile } from "custom-element-perf-tracks/stencil";
 observeStencilProfile();
 ```
 
-This copies Stencil's timings onto the tracks above instead of timing the same work a second time. Stencil's originals also stay in DevTools' general "Timings" lane, so each one appears twice.
+Each Stencil update shows as one **Render and Commit** bar on the Scheduler track. Stencil's timing for `render()` includes patching the page, so the two steps can't be shown separately as they are for Lit. On the Components track, each element gets a render bar, a bar for its `componentDidLoad` and `componentDidUpdate` hooks, and its `connectedCallback`. One-off setup, such as creating the instance and attaching styles, goes on the Upgrade track.
+
+These are copies of Stencil's timings. Stencil's originals also stay in DevTools' general "Timings" lane, so each one appears twice.
 
 ## Production builds
 
@@ -101,17 +118,21 @@ import { configure } from "custom-element-perf-tracks";
 
 configure({
   trackGroup: "My App",     // rename the group in DevTools
-  strategy: "timestamp",    // the lighter mode described below
+  strategy: "timestamp",    // how bars are drawn, described below
+  minDuration: 0,           // draw even the shortest callbacks
   enabled: false,           // turn it off completely
 });
 ```
 
 `configure` needs to run before your elements are defined. If `enabled` is `false` at that point, elements and Lit components are left completely alone. Any setting passed as `undefined` is ignored.
 
-There are two ways the library can draw bars:
+`strategy` picks how bars are drawn:
 
-- **`"measure"`** (the default) uses `performance.measure`. Bars include all the detail described above. Each bar also adds an entry to the page's performance buffer, and that list keeps growing over a long session.
-- **`"timestamp"`** uses `console.timeStamp`. It does much less work per bar and adds nothing to the buffer, but bars show only a name and a color.
+- **`"auto"`** (the default) works the way React does. Bars without details use `console.timeStamp`, which does very little work. Bars with details use `performance.measure` and are removed from the page's performance buffer straight away. They're saved under a name that starts with an invisible character, so removing them never touches the page's own measures.
+- **`"measure"`** draws every bar with `performance.measure` and leaves them in the buffer, so test scripts can read them back with `performance.getEntriesByType("measure")`.
+- **`"timestamp"`** draws every bar with `console.timeStamp`. This does the least work, but no bar has details.
+
+`minDuration` hides lifecycle callbacks and effects shorter than this many milliseconds, so the chart isn't covered in tiny bars. It defaults to 0.05 ms, the same cut-off React uses for effects. Renders are always drawn.
 
 ## Demo
 
@@ -120,19 +141,20 @@ npm install
 npm run demo
 ```
 
-The demo runs at `http://localhost:5173/demo/`. With DevTools open, you record in the Performance panel, click a few buttons, then stop. Adding `?strategy=timestamp` to the address switches to the lighter mode.
+The demo runs at `http://localhost:5173/demo/`. With DevTools open, you record in the Performance panel, click a few buttons, then stop. The Lit section has a counter that passes its count to a child badge, and a button that makes a cascading update on purpose. Adding `?strategy=timestamp` or `?strategy=measure` to the address switches drawing mode.
 
 ## Limitations
 
 - **Tracks only appear in Chrome and Edge.** Other browsers ignore the extra data, so nothing breaks there.
-- **Very fast work can disappear.** Browsers round timestamps to about a tenth of a millisecond, so anything faster has zero length and DevTools doesn't draw it.
+- **Very fast work can disappear.** Browsers round timestamps to a tenth of a millisecond, so anything faster has zero length and DevTools doesn't draw it. This also means work close to the `minDuration` cut-off can land on either side of it.
 - **Only synchronous work is timed.** A lifecycle callback that starts async work gets a bar for the synchronous part only.
+- **Lit elements update one at a time**, so their bars sit side by side instead of nesting inside a parent's bar the way React's components do. The **Triggered by** detail links a child's update to its parent.
 
 ## Tests
 
 `npm test` runs everything. The browser tests need Chrome or Chromium, which they look for in the usual places, or wherever `CHROME_PATH` points.
 
-One test runs the demo, records a real performance trace, and reads it with DevTools' own trace engine ([`@paulirish/trace_engine`](https://www.npmjs.com/package/@paulirish/trace_engine)) to check that the Performance panel would draw all three tracks, in both modes. Another set builds a small app with Vite, webpack and esbuild, and checks that production output contains none of the library while development output still contains all of it.
+One test runs the demo, records a real performance trace, and reads it with DevTools' own trace engine ([`@paulirish/trace_engine`](https://www.npmjs.com/package/@paulirish/trace_engine)). It checks that the Performance panel would draw all three tracks, with React's names and colors and with bars nested correctly, in all three drawing modes. Another set builds a small app with Vite, webpack and esbuild, and checks that production output contains none of the library while development output still contains all of it.
 
 ## License
 

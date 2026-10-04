@@ -5,7 +5,9 @@ export {
   timed,
   Tracks,
   type Config,
+  type ConsoleTask,
   type EmitOptions,
+  type Properties,
   type Strategy,
   type TrackColor,
 } from "./emit.js";

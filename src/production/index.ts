@@ -15,6 +15,8 @@ import type {
 
 export type {
   Config,
+  ConsoleTask,
+  Properties,
   EmitOptions,
   InstrumentOptions,
   LifecycleCallback,
@@ -24,15 +26,15 @@ export type {
 } from "../index.js";
 
 export const Tracks = {
-  lifecycle: "Lifecycle",
+  scheduler: "Scheduler",
+  components: "Components",
   upgrade: "Upgrade",
-  updates: "Updates",
 } as const;
 
 export function configure(_options: Partial<Config>): void {}
 
 export function getConfig(): Readonly<Config> {
-  return { enabled: false, trackGroup: "", strategy: "measure" };
+  return { enabled: false, trackGroup: "", strategy: "auto", minDuration: 0.05 };
 }
 
 export function emit(_name: string, _start: number, _end: number, _options: EmitOptions): void {}
@@ -56,7 +58,7 @@ export function definePerf(
 
 export function rerouteMeasures(
   _pattern: RegExp,
-  _map: (match: RegExpExecArray, entry: PerformanceEntry) => RerouteTarget | null,
+  _map: (match: RegExpExecArray, entry: PerformanceEntry) => RerouteTarget | RerouteTarget[] | null,
 ): () => void {
   return () => {};
 }
