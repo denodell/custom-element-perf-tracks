@@ -3,3 +3,6 @@ dist/
 *.log
 .DS_Store
 coverage/
+test/stencil-app/src/components.d.ts
+test/stencil-app/.stencil/
+test/stencil-app/www/

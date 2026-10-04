@@ -1,0 +1,1 @@
+{ "compilerOptions": { "experimentalDecorators": true, "lib": ["dom","es2022"], "moduleResolution": "node", "module": "esnext", "target": "es2022", "jsx": "react", "jsxFactory": "h", "jsxFragmentFactory": "Fragment" }, "include": ["src"] }

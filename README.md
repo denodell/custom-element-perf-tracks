@@ -97,6 +97,8 @@ Each Stencil update shows as one **Render and Commit** bar on the Scheduler trac
 
 These are copies of Stencil's timings. Stencil's originals also stay in DevTools' general "Timings" lane, so each one appears twice.
 
+Stencil doesn't record what caused an update, so Stencil updates have no **Event** or **Update** bars. Very short timings, such as `scheduleUpdate` for a component with no `componentWillUpdate` work, are hidden by the same `minDuration` cut-off as other short work. This is tested against a real Stencil 4 app, built in dev mode and recorded in Chrome.
+
 ## Production builds
 
 None of this code reaches production, and there's nothing to set up. The package contains two versions with the same API: the real one, and an empty one where `definePerf` just calls `customElements.define` and everything else does nothing. Bundlers that know they're making a production build pick the empty version, so calls like `trackLitUpdates(this)` disappear from the output.
@@ -159,7 +161,8 @@ The demo runs at `http://localhost:5173/demo/`. With DevTools open, you record i
 - **Browser tests** run each behavior described above in headless Chrome, once with Lit 3 and once with Lit 2.
 - **An end-to-end test** runs the demo, records a real performance trace, and reads it with DevTools' own trace engine ([`@paulirish/trace_engine`](https://www.npmjs.com/package/@paulirish/trace_engine)). It checks that the Performance panel would draw all three tracks, with React's names and colors and with bars nested correctly, in all three drawing modes.
 - **Bundler tests** build a small app with Vite, webpack and esbuild, and check that production output contains none of the library while development output still contains all of it.
-- **Node tests** cover the drawing code, value formatting, Stencil timings, and the empty production version.
+- **A Stencil test** builds a small real Stencil app, records it, and checks the bars DevTools would draw from Stencil's own timings.
+- **Node tests** cover the drawing code, value formatting, Stencil timing rules, and the empty production version.
 
 `npm run coverage` runs the same tests and reports which lines of the library they reached, combining what ran in Node with what ran in the browser. The report also goes to `coverage/index.html`.
 

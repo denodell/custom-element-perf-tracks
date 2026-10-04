@@ -45,7 +45,10 @@ export function observeStencilProfile(): () => void {
           : null;
       default:
         if (SETUP.has(fn)) return { name: `${tag} ${fn}`, track: Tracks.upgrade, color: "tertiary" };
-        return { name: `${tag} ${fn}`, track: Tracks.components, color: renderColor(ms) };
+        // scheduleUpdate (the componentWill… hooks), usually near zero.
+        return ms >= minDuration()
+          ? { name: `${tag} ${fn}`, track: Tracks.components, color: renderColor(ms) }
+          : null;
     }
   });
 
