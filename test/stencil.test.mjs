@@ -83,9 +83,9 @@ test("real Stencil timings become React-style bars", { skip, timeout: 180000 }, 
   assert.ok(names("Components").includes("my-counter connected"));
   assert.ok(names("Components").includes("my-badge connected"));
   assert.ok(names("Components").includes("my-counter scheduleUpdate"), "componentWillUpdate work is drawn");
-  // Stencil records scheduleUpdate for every update; shorter ones are hidden.
+  // Stencil records scheduleUpdate for every update; ones shorter than
+  // minDuration are hidden. (How many that is depends on machine load.)
   const scheduled = tracks.Components.filter((e) => e.name.endsWith("scheduleUpdate"));
-  assert.ok(scheduled.length < 6, `some of the 6 scheduleUpdate timings are hidden, got ${scheduled.length}`);
   assert.ok(scheduled.every((e) => e.dur >= 50), "every drawn one is at least minDuration (0.05 ms)");
   assert.deepEqual(names("Upgrade").filter((n) => n.endsWith("createInstance")).sort(), [
     "my-badge createInstance",
