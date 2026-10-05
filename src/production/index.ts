@@ -31,6 +31,7 @@ export const Tracks = {
   scheduler: "Scheduler",
   components: "Components",
   upgrade: "Upgrade",
+  loading: "Loading",
 } as const;
 
 export function configure(_options: Partial<Config>): void {}

@@ -342,3 +342,25 @@ test("error bars are drawn even with no length", async () => {
   stop();
   assert.deepEqual(seen.map((e) => e.name).sort(), ["<z> instant error", "<z> instant failure"]);
 });
+
+test("Stencil module loads go on Loading rows, so overlapping loads never share a row", async () => {
+  configure({ minDuration: 0.05 });
+  performance.clearMeasures();
+  const { seen, stop } = collect();
+  const unwatch = observeAgain();
+  const t = performance.now();
+  // The app load wraps everything; three loads overlap; one comes after.
+  performance.measure("[Stencil] demo initial load (by my-app)", { start: t, end: t + 100 });
+  performance.measure("[Stencil] Load module for <a-one>", { start: t + 10, end: t + 50 });
+  performance.measure("[Stencil] Load module for <a-two>", { start: t + 20, end: t + 60 });
+  performance.measure("[Stencil] Load module for <a-three>", { start: t + 30, end: t + 70 });
+  performance.measure("[Stencil] Load module for <a-four>", { start: t + 80, end: t + 90 });
+  await tick();
+  unwatch();
+  stop();
+  const rows = Object.fromEntries(seen.map((e) => [e.name.replace(/^\u200b/, ""), e.detail.devtools.track]));
+  assert.equal(rows["demo initial load (by my-app)"], "Loading");
+  assert.equal(new Set([rows["a-one"], rows["a-two"], rows["a-three"]]).size, 3, JSON.stringify(rows));
+  // a-four overlaps nothing but the app load, which it sits inside.
+  assert.equal(rows["a-four"], "Loading");
+});

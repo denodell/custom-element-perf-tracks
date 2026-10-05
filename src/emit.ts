@@ -105,6 +105,8 @@ export const Tracks = {
   components: "Components",
   /** `customElements.define` calls, which upgrade existing elements. */
   upgrade: "Upgrade",
+  /** Loading component code (Stencil's lazy loading), one row per parallel load. */
+  loading: "Loading",
 } as const;
 
 export type Properties = Array<[string, string]>;

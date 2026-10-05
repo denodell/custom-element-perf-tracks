@@ -156,8 +156,7 @@ for (const lit of ["3", "2"]) {
       assert.deepEqual(result("litSkippedAndFailed"), [
         ["lit-c skipped", "primary-light", "2", null],
         ["lit-c", "error", "1", "render broke"],
-        // shouldUpdate and render take about 0.6 ms; updated() does nothing,
-        // so its bar has no length and is not drawn.
+        // shouldUpdate and render take about 0.6 ms.
         ["lit-c", "primary", "1", null],
       ]);
     });

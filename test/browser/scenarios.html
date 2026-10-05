@@ -324,7 +324,11 @@
       out.push(...await collect(async () => { el.skip = true; el.v++; el.v++; await el.updateComplete; el.skip = false; }));
       out.push(...await collect(async () => { el.fail = true; el.v++; try { await el.updateComplete; } catch {} }));
       out.push(...await collect(async () => { el.v++; await el.updateComplete; }));
-      return on("Components", out).map((b) => [b.name, b.color, b.props["Changes batched"] ?? "1", b.props.Error ?? null]);
+      // Leave out effects bars: under load, the empty updated() can take long
+      // enough to get one.
+      return on("Components", out)
+        .filter((b) => !b.color.startsWith("secondary"))
+        .map((b) => [b.name, b.color, b.props["Changes batched"] ?? "1", b.props.Error ?? null]);
     },
 
     // ---- Fixes from review ----------------------------------------------

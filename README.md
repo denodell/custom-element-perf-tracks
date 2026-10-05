@@ -81,7 +81,7 @@ import { observeStencilProfile } from "custom-element-perf-tracks/stencil";
 observeStencilProfile();
 ```
 
-Stencil's timing for `render()` includes patching the page, so each update is one **Render and Commit** bar.
+Stencil's timing for `render()` includes patching the page, so each update is one **Render and Commit** bar. A **Loading** track shows the app starting and each component's code being loaded, with extra rows when loads overlap.
 
 ## Production builds
 

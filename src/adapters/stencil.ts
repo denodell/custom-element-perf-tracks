@@ -18,6 +18,9 @@ const SETUP = new Set(["createInstance", "attachStyles", "registerStyles", "hydr
  * - Components: each element's render, its `componentDidLoad`/`DidUpdate`
  *   hooks in the effects color, and `connectedCallback`.
  * - Upgrade: one-off setup such as creating the instance and attaching styles.
+ * - Loading: the app's initial load, and each component's code being loaded.
+ *   Loads overlap, so like React's server requests they are spread over
+ *   extra rows ("Loading 2" and so on, up to 8).
  *
  * Stencil's originals stay in DevTools' general "Timings" lane too.
  *
@@ -52,9 +55,54 @@ export function observeStencilProfile(): () => void {
     }
   });
 
+  const lanes = new Lanes(8);
+  const disconnectLoads = rerouteMeasures(
+    /^\[Stencil\] (?:Load module for <([^>]+)>|(.+ initial load \(by [^)]+\)))$/,
+    (match, entry) => {
+      const [, tag, appLoad] = match;
+      const start = entry.startTime;
+      const end = start + entry.duration;
+      const lane = lanes.place(start, end);
+      return {
+        name: tag ?? appLoad,
+        track: lane === 1 ? Tracks.loading : `${Tracks.loading} ${lane}`,
+        color: tag ? "tertiary-light" : "tertiary-dark",
+        tooltip: tag ? `Load module for <${tag}>` : appLoad,
+      };
+    },
+  );
+
   stop = () => {
     disconnect();
+    disconnectLoads();
     stop = null;
   };
   return stop;
+}
+
+/**
+ * Spreads bars over rows so that no two bars on a row partly overlap.
+ * A bar may sit inside another on the same row; DevTools nests those.
+ */
+class Lanes {
+  private rows: Array<Array<[number, number]>> = [];
+
+  constructor(private max: number) {}
+
+  /** Returns the row number, starting at 1. */
+  place(start: number, end: number): number {
+    const fits = (row: Array<[number, number]>) =>
+      row.every(([a, b]) => end <= a || start >= b || (start >= a && end <= b) || (start <= a && end >= b));
+    let i = this.rows.findIndex(fits);
+    if (i === -1) {
+      if (this.rows.length < this.max) {
+        this.rows.push([]);
+        i = this.rows.length - 1;
+      } else {
+        i = this.max - 1; // like React, the last row takes the overflow
+      }
+    }
+    this.rows[i].push([start, end]);
+    return i + 1;
+  }
 }

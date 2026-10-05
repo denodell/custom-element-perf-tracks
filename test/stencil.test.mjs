@@ -109,6 +109,15 @@ function checkBars(tracks, names, count, data) {
     "my-counter createInstance",
   ]);
 
+  // Stencil loads each component's code lazily: the app load, then a module
+  // per component, on the Loading track.
+  const loads = Object.entries(tracks)
+    .filter(([t]) => t.startsWith("Loading"))
+    .flatMap(([, es]) => es.map((e) => e.name.replace(/^\u200b/, "")));
+  assert.ok(loads.includes("my-counter"), `loads: ${loads}`);
+  assert.ok(loads.includes("my-badge"), `loads: ${loads}`);
+  assert.ok(loads.some((n) => /initial load \(by /.test(n)), `loads: ${loads}`);
+
   // The badge is connected while the counter renders, so its bar nests inside.
   const badgeConnected = tracks.Components.find((e) => e.name.replace(/^​/, "") === "my-badge connected");
   assert.equal(data.entryToNode.get(badgeConnected)?.parent?.entry?.name.replace(/^​/, ""), "my-counter");
