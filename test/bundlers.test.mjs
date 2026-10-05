@@ -28,8 +28,8 @@ window.track = trackLitUpdates;
 
 // An app that only uses the one-line setup. The import has no bindings, so
 // bundlers keep it only because the package marks it as having side effects.
-const AUTO_APP = `
-import "custom-element-perf-tracks/auto";
+const REGISTER_APP = `
+import "custom-element-perf-tracks/register";
 customElements.define("my-card", class extends HTMLElement {});
 `;
 
@@ -40,7 +40,7 @@ before(() => {
   // Install this package the way npm would link it.
   fs.symlinkSync(repo, path.join(dir, "node_modules", "custom-element-perf-tracks"), "dir");
   fs.writeFileSync(path.join(dir, "app.js"), APP);
-  fs.writeFileSync(path.join(dir, "auto.js"), AUTO_APP);
+  fs.writeFileSync(path.join(dir, "register.js"), REGISTER_APP);
   fs.writeFileSync(path.join(dir, "package.json"), '{"type":"module"}');
 });
 
@@ -130,7 +130,7 @@ test("Vite dev server uses the real code", async () => {
       ["custom-element-perf-tracks", "dist/index.js"],
       ["custom-element-perf-tracks/lit", "dist/adapters/lit.js"],
       ["custom-element-perf-tracks/stencil", "dist/adapters/stencil.js"],
-      ["custom-element-perf-tracks/auto", "dist/auto.js"],
+      ["custom-element-perf-tracks/register", "dist/register.js"],
     ]) {
       const resolved = await server.pluginContainer.resolveId(id, importer);
       assert.equal(fs.realpathSync(resolved.id), path.join(repo, file));
@@ -159,25 +159,25 @@ test("esbuild without the flag keeps the real code (documented)", async () => {
 });
 
 // Strings from the Lit adapter and core that the one-line setup pulls in.
-const AUTO_MARKERS = ["Cascading Update", "Elements upgraded", "addInitializer"];
+const REGISTER_MARKERS = ["Cascading Update", "Elements upgraded", "addInitializer"];
 
-function checkAuto(code, mode) {
-  const found = AUTO_MARKERS.filter((m) => code.includes(m));
+function checkRegister(code, mode) {
+  const found = REGISTER_MARKERS.filter((m) => code.includes(m));
   assert.match(code, /customElements\.define/);
   if (mode === "production") assert.deepEqual(found, [], `production build contains: ${found}`);
-  else assert.deepEqual(found, AUTO_MARKERS, "development build dropped the one-line setup");
+  else assert.deepEqual(found, REGISTER_MARKERS, "development build dropped the one-line setup");
 }
 
 test("one-line setup: kept in webpack development, gone in production", async () => {
-  checkAuto(await webpack("development", "auto.js"), "development");
-  checkAuto(await webpack("production", "auto.js"), "production");
+  checkRegister(await webpack("development", "register.js"), "development");
+  checkRegister(await webpack("production", "register.js"), "production");
 });
 
 test("one-line setup: gone in a Vite production build", async () => {
-  checkAuto(await vite("production", "auto.js"), "production");
+  checkRegister(await vite("production", "register.js"), "production");
 });
 
 test("one-line setup: kept by esbuild, gone with --conditions=production", async () => {
-  checkAuto(await esbuild([], "auto.js"), "development");
-  checkAuto(await esbuild(["production"], "auto.js"), "production");
+  checkRegister(await esbuild([], "register.js"), "development");
+  checkRegister(await esbuild(["production"], "register.js"), "production");
 });

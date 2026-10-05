@@ -17,7 +17,7 @@ npm install custom-element-perf-tracks
 Add this as the first import in your app's entry file, before any components load:
 
 ```js
-import "custom-element-perf-tracks/auto";
+import "custom-element-perf-tracks/register";
 ```
 
 Every custom element defined after that is tracked, and Lit elements also get their updates tracked, with no other changes to your code. Record a profile in the Performance panel and a **Web Components** group appears.

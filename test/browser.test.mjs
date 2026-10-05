@@ -285,7 +285,7 @@ for (const lit of ["3", "2"]) {
 
 // The one-line setup, on its own page because it changes customElements.define.
 for (const lit of ["3", "2"]) {
-  describe(`custom-element-perf-tracks/auto, Lit ${lit}`, () => {
+  describe(`custom-element-perf-tracks/register, Lit ${lit}`, () => {
     let server, browser, results;
 
     before(async () => {
@@ -295,7 +295,7 @@ for (const lit of ["3", "2"]) {
       const page = await browser.newPage();
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
-      await page.goto(`${server.origin}/test/browser/auto.html?lit=${lit}`);
+      await page.goto(`${server.origin}/test/browser/register.html?lit=${lit}`);
       await page.waitForFunction("window.__results", { timeout: 30000 });
       results = await page.evaluate("window.__results");
       assert.deepEqual(errors, [], "page errors");

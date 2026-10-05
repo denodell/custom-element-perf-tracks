@@ -76,6 +76,23 @@ test("real Stencil timings become React-style bars", { skip, timeout: 180000 }, 
   const names = (t) => (tracks[t] ?? []).map((e) => e.name.replace(/^​/, ""));
   const count = (t, n) => names(t).filter((x) => x === n).length;
 
+  // This test has failed rarely on a busy machine without a clear cause, so
+  // any failure reports everything that was drawn.
+  try {
+    checkBars(tracks, names, count, data);
+  } catch (error) {
+    const summary = Object.entries(tracks)
+      .map(([t, es]) => `${t}: ${es.map((e) => `${e.name.replace(/^\u200b/, "")} ${(e.dur / 1000).toFixed(2)}ms`).join(", ")}`)
+      .join("\n");
+    error.message += `\n\nBars drawn:\n${summary}`;
+    throw error;
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
+  }
+});
+
+function checkBars(tracks, names, count, data) {
+
   // First load plus two clicks: each element updates three times.
   assert.equal(count("Scheduler", "Render and Commit"), 6, names("Scheduler").join());
   assert.ok(count("Components", "my-counter") >= 3 + 2, "renders, and componentDidUpdate after each click");
@@ -96,5 +113,4 @@ test("real Stencil timings become React-style bars", { skip, timeout: 180000 }, 
   const badgeConnected = tracks.Components.find((e) => e.name.replace(/^​/, "") === "my-badge connected");
   assert.equal(data.entryToNode.get(badgeConnected)?.parent?.entry?.name.replace(/^​/, ""), "my-counter");
 
-  fs.rmSync(out, { recursive: true, force: true });
-});
+}

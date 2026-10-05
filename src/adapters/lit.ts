@@ -525,7 +525,7 @@ export function trackLitUpdates(host: ReactiveElement): void {
  * Track every Lit element defined from now on, with no change to their code.
  * Also instruments every other custom element, like `instrumentAll`. It has
  * to run before the app's components load; importing
- * `custom-element-perf-tracks/auto` first does this.
+ * `custom-element-perf-tracks/register` first does this.
  *
  * Returns a function that stops tracking newly defined elements.
  */

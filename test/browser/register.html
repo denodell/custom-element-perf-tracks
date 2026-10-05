@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>auto scenarios</title>
+<title>register scenarios</title>
 <script>
   // ?lit=2 runs every scenario against Lit 2 instead of Lit 3.
   const lit2 = new URLSearchParams(location.search).get("lit") === "2";
@@ -24,7 +24,7 @@
 <body>
 <auto-plain></auto-plain><auto-plain></auto-plain><auto-plain></auto-plain>
 <!-- The one-line setup, loaded before any component is defined. -->
-<script type="module" src="/dist/auto.js"></script>
+<script type="module" src="/dist/register.js"></script>
 <script type="module">
   import { configure, definePerf } from "/dist/index.js";
   import { LitElement, html } from "lit";
@@ -35,7 +35,7 @@
   new PerformanceObserver((list) => {
     for (const e of list.getEntries()) {
       const d = e.detail?.devtools;
-      if (d) bars.push({ name: e.name, track: d.track, rows: d.properties ?? [], props: Object.fromEntries(d.properties ?? []) });
+      if (d) bars.push({ name: e.name, track: d.track, color: d.color, rows: d.properties ?? [], props: Object.fromEntries(d.properties ?? []) });
     }
   }).observe({ type: "measure" });
 
@@ -86,7 +86,11 @@
       document.body.append(el);
       await el.updateComplete;
       const got = await collect(async () => { el.v = 1; await el.updateComplete; });
-      return names(on("Components", got)).filter((n) => n.startsWith("auto-"));
+      // Render bars only: under load, the empty updated() can take long
+      // enough to get an effects bar of its own.
+      return on("Components", got)
+        .filter((b) => b.name.startsWith("auto-") && b.color.startsWith("primary"))
+        .map((b) => b.name);
     },
 
     async definePerfIsNotDoubled() {
