@@ -115,35 +115,35 @@ function instrument(ctor: CustomElementConstructor, options: InstrumentOptions):
       }
 
       const start = now();
+      let result: unknown;
       let error: unknown;
       let failed = true;
       try {
-        const result = call();
+        result = call();
         failed = false;
-        return result;
       } catch (e) {
         error = e;
-        throw e;
-      } finally {
-        active.delete(cb);
-        const end = now();
-        // Like React's effects, very short callbacks are not drawn.
-        if (failed || end - start >= minDuration()) {
-          const options: EmitOptions = {
-            track: Tracks.components,
-            color,
-            properties:
-              cb === "attributeChangedCallback"
-                ? () => [
-                    ["Changed Attribute", ""],
-                    [REMOVED + String(args[0]), preview(args[1])],
-                    [ADDED + String(args[0]), preview(args[2])],
-                  ]
-                : undefined,
-          };
-          emit(`${labelFor(this)} ${label}`, start, end, failed ? withError(options, error) : options);
-        }
       }
+      active.delete(cb);
+      const end = now();
+      // Like React's effects, very short callbacks are not drawn.
+      if (failed || end - start >= minDuration()) {
+        const options: EmitOptions = {
+          track: Tracks.components,
+          color,
+          properties:
+            cb === "attributeChangedCallback"
+              ? () => [
+                  ["Changed Attribute", ""],
+                  [REMOVED + String(args[0]), preview(args[1])],
+                  [ADDED + String(args[0]), preview(args[2])],
+                ]
+              : undefined,
+        };
+        emit(`${labelFor(this)} ${label}`, start, end, failed ? withError(options, error) : options);
+      }
+      if (failed) throw error;
+      return result;
     };
     Object.defineProperty(wrapped, "name", { value: (original as { name: string }).name });
     Object.defineProperty(wrapped, WRAPPED, { value: true });
@@ -285,6 +285,6 @@ export function instrumentAll(options: InstrumentAllOptions = {}): () => void {
     if (stopped) return;
     stopped = true;
     if (hook) defineHooks.delete(hook);
-    if (--users === 0) unpatch?.();
+    if (--users === 0) unpatch!();
   };
 }

@@ -212,6 +212,61 @@ for (const lit of ["3", "2"]) {
       assert.deepEqual(result("disabledDoesNotPatch"), { untouched: true, litUntouched: true, stillOff: true });
     });
 
+    test("an already instrumented class with a bad tag name throws and stays instrumented", { skip }, () => {
+      assert.deepEqual(result("alreadyInstrumentedClassWithBadName"), { threw: "SyntaxError", stillInstrumented: true });
+    });
+
+    test("browsers without customElements.getName() use the tag name", { skip }, () => {
+      assert.deepEqual(result("noGetName"), ["old-browser connected"]);
+    });
+
+    test("instrumentAll: broken hooks, other registries, double stops and other wrappers", { skip }, () => {
+      assert.deepEqual(result("instrumentAllEdgeCases"), {
+        defined: true,
+        bars: ["hook-broke connected"],
+        otherThis: "TypeError",
+        restoredAfterTwoStops: true,
+        keptOtherWrapper: true,
+        restoredOwn: true,
+      });
+    });
+
+    test("events are still linked to updates in browsers without WeakRef", { skip }, () => {
+      assert.deepEqual(result("litWithoutWeakRef"), ["Event: click"]);
+    });
+
+    test("a composed event heard in the shadow root and on the window counts once", { skip }, () => {
+      assert.deepEqual(result("composedEventSeenOnce"), ["Event: change"]);
+    });
+
+    test("a property set inside render() is not counted, since Lit drops it", { skip }, () => {
+      const r = result("changeDuringRenderIsDropped");
+      assert.ok(!r.scheduler.includes("Cascading Update"), JSON.stringify(r));
+      assert.equal(r.batched, "1");
+    });
+
+    test("requestUpdate: passed-in new values are counted, unreadable properties pass Lit's error through", { skip }, () => {
+      // Lit 2 ignores the extra arguments, so it sees no change and does not update.
+      assert.deepEqual(
+        result("requestUpdateEdgeCases"),
+        lit === "3"
+          ? { drawn: true, batched: null, error: "cannot read" }
+          : { drawn: false, batched: null, error: "cannot read" },
+      );
+    });
+
+    test("trackLitUpdates called during an update starts tracking from the next one", { skip }, () => {
+      assert.deepEqual(result("trackedFromInsideAnUpdate"), { rendered: "1", first: [], second: ["lit-late"] });
+    });
+
+    test("if tracking itself fails, the element is unaffected and later updates are still tracked", { skip }, () => {
+      assert.deepEqual(result("trackingFailureNeverBreaksTheElement"), {
+        error: null,
+        rendered: "6",
+        stillTracked: ["Render"],
+      });
+    });
+
     test("the production version defines elements, lets Lit render, and draws nothing", { skip }, () => {
       assert.deepEqual(result("productionVersionWorks"), { defined: true, connected: true, litRendered: "1", bars: 0 });
     });

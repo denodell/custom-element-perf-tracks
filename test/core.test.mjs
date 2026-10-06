@@ -263,7 +263,7 @@ test("rerouted errors go to console.error where reportError does not exist", asy
   assert.deepEqual(logged, ["map broke"]);
 });
 
-test("Stencil: short connectedCallback and postUpdate timings are hidden", async () => {
+test("Stencil: short connectedCallback, postUpdate and scheduleUpdate timings are hidden", async () => {
   configure({ minDuration: 0.5 });
   // Watching picks up timings already recorded, so start from an empty buffer.
   performance.clearMeasures();
@@ -273,11 +273,13 @@ test("Stencil: short connectedCallback and postUpdate timings are hidden", async
   performance.measure("[Stencil] connectedCallback() <tiny-widget>", { start: t, end: t + 0.1 });
   performance.measure("[Stencil] postUpdate() <tiny-widget>", { start: t, end: t + 0.1 });
   performance.measure("[Stencil] postUpdate() <tiny-widget>", { start: t, end: t + 2 });
+  performance.measure("[Stencil] scheduleUpdate() <tiny-widget>", { start: t, end: t + 0.1 });
+  performance.measure("[Stencil] scheduleUpdate() <tiny-widget>", { start: t, end: t + 3 });
   await tick();
   unwatch();
   stop();
   configure({ minDuration: 0.05 });
-  assert.deepEqual(seen.map((e) => Math.round(e.duration)), [2]);
+  assert.deepEqual(seen.map((e) => Math.round(e.duration)).sort(), [2, 3]);
 });
 
 // ---- The empty production version ----------------------------------------
@@ -363,4 +365,110 @@ test("Stencil module loads go on Loading rows, so overlapping loads never share 
   assert.equal(new Set([rows["a-one"], rows["a-two"], rows["a-three"]]).size, 3, JSON.stringify(rows));
   // a-four overlaps nothing but the app load, which it sits inside.
   assert.equal(rows["a-four"], "Loading");
+});
+
+// ---- Edge cases ----------------------------------------------------------
+
+test("rerouteMeasures skips entries the map function turns down", async () => {
+  const { seen, stop } = collect();
+  const name = unique("skip-me");
+  const unwatch = rerouteMeasures(/^skip-me/, () => null);
+  performance.measure(name, { start: performance.now() - 2, end: performance.now() });
+  await tick();
+  unwatch();
+  stop();
+  assert.equal(seen.length, 0);
+});
+
+test("rerouteMeasures can turn one entry into several bars", async () => {
+  const { seen, stop } = collect();
+  const name = unique("split-me");
+  const unwatch = rerouteMeasures(/^split-me/, (m, e) => [
+    { name: "first half", track: "Components", end: e.startTime + e.duration / 2 },
+    { name: "second half", track: "Components", start: e.startTime + e.duration / 2 },
+  ]);
+  const t = performance.now();
+  performance.measure(name, { start: t - 4, end: t });
+  await tick();
+  unwatch();
+  stop();
+  assert.deepEqual(seen.map((e) => [e.name, Math.round(e.duration)]), [["first half", 2], ["second half", 2]]);
+});
+
+test("Stencil: more than eight overlapping loads share the last Loading row", async () => {
+  configure({ minDuration: 0.05 });
+  const { seen, stop } = collect();
+  const unwatch = observeAgain();
+  // Well after the bars from earlier tests, so no row is still in use.
+  const t = performance.now() + 10000;
+  for (let i = 0; i < 10; i++) {
+    performance.measure(`[Stencil] Load module for <many-${i}>`, { start: t + i, end: t + 50 + i });
+  }
+  await tick();
+  unwatch();
+  stop();
+  const rows = seen.filter((e) => e.name.includes("many-")).map((e) => e.detail.devtools.track);
+  assert.deepEqual(rows, [
+    "Loading", "Loading 2", "Loading 3", "Loading 4", "Loading 5", "Loading 6", "Loading 7", "Loading 8",
+    "Loading 8", "Loading 8",
+  ]);
+});
+
+test("the production version's setup functions do nothing", async () => {
+  const prod = await import("../dist/production/index.js");
+  const prodLit = await import("../dist/production/adapters/lit.js");
+  const stop = prod.instrumentAll({ onDefine: () => assert.fail("called") });
+  assert.equal(typeof stop, "function");
+  stop();
+  assert.equal(typeof prodLit.trackAllLitElements(), "function");
+  prodLit.trackAllLitElements()();
+});
+
+test("without customElements (Node, some SSR), the element helpers do nothing harmful", async () => {
+  const { instrumentAll, instrumentElement } = await import("../dist/index.js");
+  const { labelFor } = await import("../dist/define.js");
+  assert.equal(typeof customElements, "undefined");
+  const stop = instrumentAll();
+  stop();
+  stop();
+  // Falls back to the tag name when there is no registry to ask.
+  assert.equal(labelFor({ constructor: class {}, localName: "x-fallback" }), "x-fallback");
+  class Plain { connectedCallback() { return "ran"; } }
+  instrumentElement(Plain);
+  assert.equal(new Plain().connectedCallback.call({ constructor: Plain, localName: "x-plain" }), "ran");
+});
+
+test("with no performance, PerformanceObserver or console, nothing is drawn and nothing breaks", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const script = `
+    delete globalThis.performance;
+    delete globalThis.PerformanceObserver;
+    delete globalThis.console;
+    const { emit, timed, rerouteMeasures } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
+    const { now } = await import(${JSON.stringify(new URL("../dist/emit.js", import.meta.url).href)});
+    emit("x", 0, 1, { track: "Components" });
+    const out = [timed("x", { track: "Components" }, () => 7), now()];
+    rerouteMeasures(/x/, () => null)();
+    process.stdout.write(JSON.stringify(out));
+  `;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, "[7,0]");
+});
+
+test("with no console, the timestamp strategy falls back to performance.measure", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const script = `
+    const log = console.log.bind(console);
+    const seen = [];
+    new PerformanceObserver((l) => seen.push(...l.getEntries().map((e) => e.name))).observe({ entryTypes: ["measure"] });
+    delete globalThis.console;
+    const { emit, configure } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
+    configure({ strategy: "timestamp" });
+    emit("no-console", performance.now() - 1, performance.now(), { track: "Components" });
+    setTimeout(() => log(JSON.stringify(seen)), 20);
+  `;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), ["\u200bno-console"]);
 });

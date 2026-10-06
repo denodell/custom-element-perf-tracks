@@ -230,18 +230,18 @@ function draw_(name: string, start: number, end: number, options: EmitOptions): 
 export function timed<T>(name: string, options: EmitOptions, fn: () => T): T {
   if (!config.enabled || !hasPerformance) return fn();
   const start = performance.now();
+  let result: T | undefined;
   let error: unknown;
   let failed = true;
   try {
-    const result = fn();
+    result = fn();
     failed = false;
-    return result;
   } catch (e) {
     error = e;
-    throw e;
-  } finally {
-    emit(name, start, performance.now(), failed ? withError(options, error) : options);
   }
+  emit(name, start, performance.now(), failed ? withError(options, error) : options);
+  if (failed) throw error;
+  return result as T;
 }
 
 /** @internal Add React-style error details to a bar. */

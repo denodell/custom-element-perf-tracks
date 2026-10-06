@@ -647,6 +647,202 @@
       configure({ enabled: true });
       return { untouched: Off.prototype.connectedCallback === before, litUntouched, stillOff };
     },
+
+    // ---- Edge cases ------------------------------------------------------
+
+    async alreadyInstrumentedClassWithBadName() {
+      class Twice extends HTMLElement { connectedCallback() {} }
+      instrumentElement(Twice);
+      const patched = Twice.prototype.connectedCallback;
+      let threw = null;
+      try { definePerf("Not Valid", Twice); } catch (e) { threw = e.name; }
+      return { threw, stillInstrumented: Twice.prototype.connectedCallback === patched };
+    },
+
+    async noGetName() {
+      // Browsers before customElements.getName() fall back to the tag name.
+      customElements.getName = undefined;
+      try {
+        class OldBrowser extends HTMLElement { connectedCallback() { work(0.5); } }
+        definePerf("old-browser", OldBrowser);
+        return names(on("Components", await collect(() => document.body.append(new OldBrowser()))));
+      } finally {
+        delete customElements.getName;
+      }
+    },
+
+    async instrumentAllEdgeCases() {
+      const out = {};
+      // A hook that throws never stops the element being defined.
+      let stop = instrumentAll({ onDefine() { throw new Error("hook broke"); } });
+      class HookBroke extends HTMLElement { connectedCallback() { work(0.5); } }
+      const got = await collect(() => { customElements.define("hook-broke", HookBroke); document.body.append(new HookBroke()); });
+      out.defined = customElements.get("hook-broke") === HookBroke;
+      out.bars = names(on("Components", got));
+      // Called on something other than the registry: passed straight to the browser.
+      try { customElements.define.call({}, "not-registry", class extends HTMLElement {}); } catch (e) { out.otherThis = e.name; }
+      stop();
+      stop(); // a second call does nothing
+      out.restoredAfterTwoStops = !Object.prototype.hasOwnProperty.call(customElements, "define");
+
+      // Something else wrapped define afterwards: leave their wrapper alone.
+      stop = instrumentAll();
+      const theirs = function define(...args) { return CustomElementRegistry.prototype.define.apply(this, args); };
+      customElements.define = theirs;
+      stop();
+      out.keptOtherWrapper = customElements.define === theirs;
+      delete customElements.define;
+
+      // define was already an own property: put that back.
+      const own = function define(...args) { return CustomElementRegistry.prototype.define.apply(this, args); };
+      customElements.define = own;
+      stop = instrumentAll();
+      const patched = customElements.define !== own;
+      stop();
+      out.restoredOwn = patched && customElements.define === own;
+      delete customElements.define;
+      return out;
+    },
+
+    async litWithoutWeakRef() {
+      class LitNoWeak extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { work(0.3); return html`${this.v}`; }
+      }
+      customElements.define("lit-no-weak", LitNoWeak);
+      const el = new LitNoWeak();
+      const button = document.createElement("button");
+      button.addEventListener("click", () => { work(1); el.v++; });
+      document.body.append(el, button);
+      await el.updateComplete;
+      const saved = window.WeakRef;
+      window.WeakRef = undefined;
+      try {
+        const got = await collect(async () => { button.click(); await el.updateComplete; });
+        return names(on("Scheduler", got)).filter((n) => n.startsWith("Event"));
+      } finally {
+        window.WeakRef = saved;
+      }
+    },
+
+    async composedEventSeenOnce() {
+      // A composed "change" event is heard by each shadow root it passes
+      // through. It is still one event.
+      class LitInput extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { work(0.3); return html`<span @change=${() => { work(1); this.v++; }}>${this.v}</span>`; }
+      }
+      customElements.define("lit-input", LitInput);
+      // Inside another tracked element, so the event passes two shadow roots.
+      class LitInputBox extends LitElement {
+        constructor() { super(); trackLitUpdates(this); }
+        render() { return html`<lit-input></lit-input>`; }
+      }
+      customElements.define("lit-input-box", LitInputBox);
+      const box = new LitInputBox();
+      document.body.append(box);
+      await box.updateComplete;
+      const el = box.renderRoot.querySelector("lit-input");
+      await el.updateComplete;
+      const span = el.renderRoot.querySelector("span");
+      const got = await collect(async () => {
+        span.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+        await el.updateComplete;
+      });
+      return names(on("Scheduler", got)).filter((n) => n.startsWith("Event"));
+    },
+
+    async changeDuringRenderIsDropped() {
+      class LitSelfSet extends LitElement {
+        static properties = { v: { type: Number }, shadowed: { type: Number } };
+        constructor() { super(); this.v = 0; this.shadowed = 0; trackLitUpdates(this); }
+        render() { work(0.3); this.shadowed = this.v; return html`${this.v}`; }
+      }
+      customElements.define("lit-self-set", LitSelfSet);
+      const el = new LitSelfSet();
+      document.body.append(el);
+      await el.updateComplete;
+      await frame();
+      const got = await collect(async () => { el.v++; await el.updateComplete; });
+      const bar = on("Components", got).find((b) => b.name === "lit-self-set");
+      return { scheduler: names(on("Scheduler", got)), batched: bar?.props["Changes batched"] ?? "1" };
+    },
+
+    async requestUpdateEdgeCases() {
+      class LitManual extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        get broken() { throw new Error("cannot read"); }
+        render() { work(0.3); return html`${this.v}`; }
+      }
+      customElements.define("lit-manual", LitManual);
+      const el = new LitManual();
+      document.body.append(el);
+      await el.updateComplete;
+      await frame();
+      // Lit 3's standard decorators pass the new value in, rather than
+      // leaving it to be read from the element.
+      const got = await collect(async () => { el.requestUpdate("v", 0, undefined, true, 0); el.requestUpdate("v", 0, undefined, true, 7); await el.updateComplete; });
+      // A property that cannot be read: the element's own error comes through.
+      let error = null;
+      try { el.requestUpdate("broken", 1); } catch (e) { error = e.message; }
+      await el.updateComplete;
+      const bar = on("Components", got).find((b) => b.name === "lit-manual" && b.color.startsWith("primary"));
+      return { drawn: Boolean(bar), batched: bar?.props["Changes batched"] ?? null, error };
+    },
+
+    async trackedFromInsideAnUpdate() {
+      class LitLate extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; }
+        willUpdate() { if (!this.tracked) { this.tracked = true; trackLitUpdates(this); } }
+        render() { work(0.3); return html`${this.v}`; }
+      }
+      customElements.define("lit-late", LitLate);
+      const el = new LitLate();
+      const first = await collect(async () => { document.body.append(el); await el.updateComplete; });
+      const second = await collect(async () => { el.v++; await el.updateComplete; });
+      return {
+        rendered: el.renderRoot.textContent.trim(),
+        // Leave out effects bars, which appear under load.
+        first: names(on("Components", first).filter((b) => !b.color.startsWith("secondary"))),
+        second: names(on("Components", second).filter((b) => !b.color.startsWith("secondary"))).filter((n) => n === "lit-late"),
+      };
+    },
+
+    async trackingFailureNeverBreaksTheElement() {
+      class LitClockBreaks extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { work(0.3); return html`${this.v}`; }
+        // Break the clock after the element's own work, so only the
+        // tracking that runs afterwards sees it.
+        updated() { if (this.breakClock) performance.now = () => { throw new Error("no clock"); }; }
+      }
+      customElements.define("lit-clock-breaks", LitClockBreaks);
+      const el = new LitClockBreaks();
+      document.body.append(el);
+      await el.updateComplete;
+      let error = null;
+      try {
+        el.breakClock = true;
+        el.v = 5;
+        await el.updateComplete;
+      } catch (e) {
+        error = e.message;
+      } finally {
+        delete performance.now;
+        el.breakClock = false;
+      }
+      const after = await collect(async () => { el.v = 6; await el.updateComplete; });
+      return {
+        error,
+        rendered: el.renderRoot.textContent.trim(),
+        stillTracked: names(on("Scheduler", after)).filter((n) => n === "Render"),
+      };
+    },
   };
 
   const results = {};

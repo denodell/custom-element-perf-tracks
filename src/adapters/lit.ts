@@ -238,22 +238,22 @@ class LitUpdateTracker implements ReactiveController {
     host.performUpdate = function (this: Host) {
       if (!this.isUpdatePending) return performUpdate.call(this);
       const frame = tracker.begin();
+      let result: ReturnType<Host["performUpdate"]> | undefined;
       let error: unknown;
       let failed = true;
       try {
-        const result = performUpdate.call(this);
+        result = performUpdate.call(this);
         failed = false;
-        return result;
       } catch (e) {
         error = e;
-        throw e;
-      } finally {
-        try {
-          tracker.end(frame, failed, error);
-        } catch {
-          // Never let tracking replace the element's own result or error.
-        }
       }
+      try {
+        tracker.end(frame, failed, error);
+      } catch {
+        // Never let tracking replace the element's own result or error.
+      }
+      if (failed) throw error;
+      return result;
     };
   }
 
@@ -416,11 +416,12 @@ class LitUpdateTracker implements ReactiveController {
   }
 
   end(frame: Frame, failed: boolean, error: unknown): void {
-    const end = now();
+    // Tidy up first, so later updates are tracked even if drawing fails.
     let i = this.frames.lastIndexOf(frame);
     if (i !== -1) this.frames.splice(i, 1);
     i = updating.lastIndexOf(frame);
     if (i !== -1) updating.splice(i, 1);
+    const end = now();
 
     // hostUpdate runs only when the update goes ahead: not when shouldUpdate
     // returns false, and not if shouldUpdate or willUpdate throws.
