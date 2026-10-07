@@ -1,29 +1,3 @@
-/**
- * The one place that talks to Chrome DevTools.
- *
- * Chrome's Performance Extensibility API offers two ways to draw a bar on a
- * custom track:
- *
- * - `console.timeStamp` with extra arguments: very little work, and nothing
- *   is added to the page's performance buffer, but the bar has only a name
- *   and a color.
- * - `performance.measure` with a `detail.devtools` object: the bar can carry
- *   extra details, shown when it is selected.
- *
- * React's own performance tracks use `console.timeStamp` for most bars.
- * Measured here, that is the cheaper call when nothing is listening to the
- * page (about 0.3 µs against 4 µs), but around six times dearer once a
- * debugger is attached, which it always is when DevTools is open. So by
- * default every bar uses `performance.measure`, and each one is removed
- * from the page's performance buffer straight away, under a name starting
- * with an invisible zero-width space so that clearing it never removes the
- * page's own measures.
- *
- * Other browsers ignore the DevTools-specific parts, so nothing breaks there.
- *
- * https://developer.chrome.com/docs/devtools/performance/extension
- */
-
 export type TrackColor =
   | "primary"
   | "primary-light"
@@ -40,32 +14,13 @@ export type TrackColor =
 export type Strategy = "auto" | "measure" | "timestamp";
 
 export interface Config {
-  /**
-   * Turn all emission on or off. Default: true.
-   *
-   * Element and Lit instrumentation is wired up (or skipped) when it is set
-   * up, so set this before defining elements.
-   */
+  /** Turns drawing on or off. Set before elements are defined. */
   enabled: boolean;
-  /** Name of the collapsible group the tracks sit under. */
+  /** The DevTools group the tracks appear under. */
   trackGroup: string;
-  /**
-   * How bars are drawn.
-   *
-   * - `"auto"` (default): every bar uses `performance.measure`, with its
-   *   details, and is removed from the performance buffer straight away.
-   * - `"measure"`: every bar uses `performance.measure` and stays in the
-   *   buffer, so scripts (tests, for example) can read them back with
-   *   `performance.getEntriesByType("measure")`.
-   * - `"timestamp"`: every bar uses `console.timeStamp`, like most of React's.
-   *   The least work when DevTools is closed, but no bar has details.
-   */
+  /** How bars are drawn. See the README's Settings section. */
   strategy: Strategy;
-  /**
-   * Lifecycle callbacks and Lit `updated()` work shorter than this many
-   * milliseconds are not drawn, to keep the chart readable. React uses the
-   * same cut-off for effects. Default: 0.05. Set to 0 to draw everything.
-   */
+  /** Callbacks shorter than this many milliseconds are left undrawn. */
   minDuration: number;
 }
 
@@ -76,78 +31,57 @@ const config: Config = {
   minDuration: 0.05,
 };
 
-/** Change settings. Keys set to `undefined` are ignored. */
+/** Changes settings. Keys set to `undefined` are ignored. */
 export function configure(options: Partial<Config>): void {
   for (const [key, value] of Object.entries(options)) {
     if (value !== undefined) (config as unknown as Record<string, unknown>)[key] = value;
   }
 }
 
+/** Returns a copy of the current settings. */
 export function getConfig(): Readonly<Config> {
   return { ...config };
 }
 
-/** @internal Fast check that avoids copying the config. */
 export function isEnabled(): boolean {
   return config.enabled;
 }
 
-/** @internal The default track group, without copying the config. */
 export function defaultTrackGroup(): string {
   return config.trackGroup;
 }
 
-/** @internal */
 export function minDuration(): number {
   return config.minDuration;
 }
 
-/** Track names used by the built-in helpers. */
+/** The track names the built-in helpers use. */
 export const Tracks = {
-  /** What caused each update, and its steps: Update, Render, Commit. */
   scheduler: "Scheduler",
-  /** Which element did the work: renders, effects and lifecycle callbacks. */
   components: "Components",
-  /** `customElements.define` calls, which upgrade existing elements. */
   upgrade: "Upgrade",
-  /** Loading component code (Stencil's lazy loading), one row per parallel load. */
   loading: "Loading",
 } as const;
 
 export type Properties = Array<[string, string]>;
 
-/** The subset of Chrome's `console.createTask` result this library uses. */
 export interface ConsoleTask {
   run<T>(fn: () => T): T;
 }
 
 export interface EmitOptions {
   track: string;
-  /**
-   * The track group this bar goes under. Defaults to the configured
-   * `trackGroup`. See also `assignTrackGroup`.
-   */
   trackGroup?: string;
   color?: TrackColor;
-  /**
-   * Extra details, shown in the DevTools summary panel when the bar is
-   * selected. Ignored by the `"timestamp"` strategy. Can be a function, so
-   * the work of building them is skipped when they are not needed.
-   */
   properties?: Properties | (() => Properties | undefined);
   tooltip?: string;
-  /**
-   * A task from `console.createTask`. DevTools then shows the stack where
-   * the task was created (for an element, where it was created) in the
-   * bar's "Function stack", instead of this library's own code.
-   */
   task?: ConsoleTask | null;
 }
 
 const hasPerformance = typeof performance !== "undefined";
+// An invisible prefix, so clearing these measures leaves the page's own measures with the same name in place.
 const ZERO_WIDTH_SPACE = "​";
 
-/** `performance.now()`, or 0 where there is no `performance` (some SSR). */
 export function now(): number {
   return hasPerformance ? performance.now() : 0;
 }
@@ -161,7 +95,6 @@ type TimeStamp = (
   color: string,
 ) => void;
 
-/** @internal Create a DevTools task where supported (Chrome), or null. */
 export function createTask(name: string): ConsoleTask | null {
   const create = (console as unknown as { createTask?: (name: string) => ConsoleTask }).createTask;
   if (typeof create !== "function") return null;
@@ -172,22 +105,15 @@ export function createTask(name: string): ConsoleTask | null {
   }
 }
 
-/**
- * Draw one bar on a custom track, from `start` to `end`
- * (both `performance.now()` timestamps).
- */
+/** Draws one bar on a custom track, between two `performance.now()` timestamps. */
 export function emit(name: string, start: number, end: number, options: EmitOptions): void {
   if (!config.enabled || !hasPerformance) return;
-  // A bar with no length is invisible, so skip the work of drawing it,
-  // unless it reports an error.
   if (!(end > start) && options.color !== "error") return;
   const draw = () => draw_(name, start, end, options);
   try {
     if (options.task) options.task.run(draw);
     else draw();
-  } catch {
-    // Never let instrumentation break the component it is watching.
-  }
+  } catch {}
 }
 
 function draw_(name: string, start: number, end: number, options: EmitOptions): void {
@@ -199,9 +125,7 @@ function draw_(name: string, start: number, end: number, options: EmitOptions): 
   if (strategy !== "timestamp") {
     try {
       properties = typeof options.properties === "function" ? options.properties() : options.properties;
-    } catch {
-      // Draw the bar without its details rather than not at all.
-    }
+    } catch {}
   }
 
   const useTimeStamp = typeof timeStamp === "function" && strategy === "timestamp";
@@ -230,14 +154,7 @@ function draw_(name: string, start: number, end: number, options: EmitOptions): 
   if (strategy !== "measure") performance.clearMeasures(measureName);
 }
 
-/**
- * Run `fn`, timing it as one bar. Returns whatever `fn` returns and rethrows
- * whatever it throws. If it throws, the bar is colored `"error"` and the
- * error message is added to its details.
- *
- * Only synchronous work is timed: for an async function the bar ends when
- * the promise is returned, not when it settles.
- */
+/** Runs `fn` and draws it as one bar, red with the error message if it throws. */
 export function timed<T>(name: string, options: EmitOptions, fn: () => T): T {
   if (!config.enabled || !hasPerformance) return fn();
   const start = performance.now();
@@ -255,7 +172,6 @@ export function timed<T>(name: string, options: EmitOptions, fn: () => T): T {
   return result as T;
 }
 
-/** @internal Add React-style error details to a bar. */
 export function withError(options: EmitOptions, error: unknown): EmitOptions {
   const base = options.properties;
   return {
@@ -275,10 +191,6 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
-/**
- * @internal Format a value for the details panel, briefly, like React's
- * "Changed Props".
- */
 export function preview(value: unknown): string {
   try {
     return previewUnsafe(value);
@@ -310,16 +222,13 @@ function previewUnsafe(value: unknown): string {
   }
 }
 
-/** @internal Render bar color by duration, using React's thresholds. */
 export function renderColor(ms: number): TrackColor {
   return ms < 0.5 ? "primary-light" : ms < 10 ? "primary" : ms < 100 ? "primary-dark" : "error";
 }
 
-/** @internal Effect bar color by duration, using React's thresholds. */
 export function effectColor(ms: number): TrackColor {
   return ms < 1 ? "secondary-light" : ms < 100 ? "secondary" : ms < 500 ? "secondary-dark" : "error";
 }
 
-/** @internal React's prefixes for removed and added values. */
 export const REMOVED = "- ";
 export const ADDED = "+ ";

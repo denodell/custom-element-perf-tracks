@@ -1,4 +1,3 @@
-// Type-only import: this file has no runtime dependency on Lit.
 import type { ReactiveController, ReactiveElement } from "lit";
 import {
   ADDED,
@@ -20,36 +19,6 @@ import { instrumentAll, labelFor } from "../define.js";
 import { groupFor } from "../groups.js";
 import { sameContentsNewObject } from "../compare.js";
 
-/**
- * Lit update tracking, laid out the way React's performance tracks are.
- *
- * Scheduler track, one row of steps per update:
- *   Event: click   the DOM event that led to the change, if there was one
- *   Update         from the first change to Lit starting the update
- *                  ("Update Blocked" when that wait is over 5 ms)
- *   Render         shouldUpdate, willUpdate and render
- *   Commit         writing the result to the page, then firstUpdated/updated
- *   Cascading Update  wraps an update the element started for itself while
- *                  committing or in updated(), which Lit also warns about
- *
- * Components track, per element:
- *   Mount          wraps an element's first update
- *   my-element     its render, with "Changed Props" when properties changed
- *   my-element     its firstUpdated()/updated() work, in the effects color
- *
- * A render where every changed property was only given a new array or
- * object with the same contents is marked as a wasted render, in the
- * warning color, naming the properties.
- *
- * Colors and names follow React's, so the two read the same way.
- *
- * The order of Lit's update, from @lit/reactive-element's performUpdate:
- * shouldUpdate, willUpdate, controllers' hostUpdate, update() (render, then
- * marking the update done, then writing to the page), controllers'
- * hostUpdated, firstUpdated, updated.
- */
-
-/** `performUpdate` and `render` are protected in Lit's types, but documented. */
 interface Protected {
   performUpdate(): unknown;
   render?: (...args: unknown[]) => unknown;
@@ -57,27 +26,19 @@ interface Protected {
 
 type Host = ReactiveElement & Protected;
 
-/** Lit's default change check. */
 const notEqual = (value: unknown, old: unknown) => !Object.is(value, old);
 
 const TRACKED = Symbol.for("tuppence.lit");
 
-/** Stands in for a property value whose getter threw. */
 const UNREADABLE = Symbol("unreadable");
-
-// ---- Events ---------------------------------------------------------------
 
 interface EventInfo {
   type: string;
   timeStamp: number;
 }
 
-/**
- * Events the "Event:" bar can name. React reads `window.event`, but browsers
- * hide that from code in shadow DOM, where Lit's event handlers run. So this
- * listens on the window for discrete user input, and on each tracked
- * element's shadow root for the events that do not leave it.
- */
+// Browsers hide window.event from shadow DOM, where Lit's handlers run, so events are
+// recorded by listening on the window and on each shadow root instead.
 const COMPOSED_EVENTS = [
   "click", "dblclick", "auxclick", "contextmenu",
   "pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend",
@@ -89,7 +50,6 @@ const SHADOW_EVENTS = ["change", "submit", "reset", "toggle", "select"];
 interface SeenEvent {
   type: string;
   timeStamp: number;
-  /** Weak, so a remembered event never keeps its target alive. */
   ref: { deref(): Event | undefined };
 }
 
@@ -114,11 +74,9 @@ function listenForEvents(): void {
   for (const type of COMPOSED_EVENTS) window.addEventListener(type, remember, LISTEN);
 }
 
-/** The event currently being handled, if any. */
 function currentEvent(): EventInfo | null {
   for (let i = recentEvents.length - 1; i >= 0; i--) {
     const seen = recentEvents[i];
-    // An event's phase goes back to NONE (0) once handling has finished.
     const e = seen.ref.deref();
     if (e && e.eventPhase !== 0) return { type: seen.type, timeStamp: seen.timeStamp };
   }
@@ -127,27 +85,18 @@ function currentEvent(): EventInfo | null {
   return null;
 }
 
-// ---- Shared state across all tracked elements ---------------------------
-
-/** Updates in progress, innermost last. */
 const updating: Frame[] = [];
 
-/**
- * End of the last update drawn on each group's Scheduler track, so bars on
- * one track never overlap.
- */
 const schedulerEnds = new Map<string, number>();
 const schedulerEnd = (group: string) => schedulerEnds.get(group) ?? 0;
 
 type Phase = "before-render" | "render" | "after-render";
 
-/** Everything about one update in progress. */
 interface Frame {
   tracker: LitUpdateTracker;
   start: number;
   phase: Phase;
   first: boolean;
-  /** Set when this update was started by the element during its last one. */
   cascade: string | null;
   info: UpdateInfo | null;
   renderEnd: number | null;
@@ -156,7 +105,6 @@ interface Frame {
 
 interface UpdateInfo {
   changes: number;
-  /** [name, old value, new value]; formatted only when a bar needs them. */
   changed: Array<[string, unknown, unknown]>;
   manual: boolean;
   triggeredBy: string | null;
@@ -172,41 +120,28 @@ class LitUpdateTracker implements ReactiveController {
   readonly tag: string;
   readonly task: ConsoleTask | null;
 
-  // Changes since the last update started.
   private changes = 0;
   private oldValues = new Map<PropertyKey, unknown>();
   private manual = false;
   private triggeredBy: string | null = null;
 
-  /** A change that did not come from another element's update. */
   private root: Root | null = null;
-  /** A root change made while disconnected: the wait starts at connection. */
   private rootProperty: string | null | undefined;
 
-  /** Set when the element changes itself after rendering; marks the next update. */
   private cascadeNext: string | null = null;
 
-  /** This element's updates in progress (more than one if nested). */
   private frames: Frame[] = [];
   private shadowListening: ShadowRoot | null = null;
 
   constructor(private host: Host) {
     this.tag = labelFor(host);
-    // Like React, run each bar inside a task created with the element, so
-    // DevTools' "Function stack" shows where the element was created.
     this.task = createTask(this.tag);
     host.addController(this);
 
-    // Lit asks for its first update inside its own constructor, before this
-    // tracker exists.
     if (host.isUpdatePending) this.note(undefined, undefined, true);
 
     const tracker = this;
 
-    // Lit's property setters call `requestUpdate(name, oldValue, options)` on
-    // every set, then ignore sets that change nothing, using the property's
-    // `hasChanged` check. The same check is applied here so only real changes
-    // are counted. `requestUpdate()` with no name always causes an update.
     const requestUpdate = host.requestUpdate;
     host.requestUpdate = function (this: Host, ...args: Parameters<Host["requestUpdate"]>) {
       try {
@@ -225,9 +160,7 @@ class LitUpdateTracker implements ReactiveController {
           const value = useNewValue ? newValue : (this as unknown as Record<PropertyKey, unknown>)[name];
           if ((opts?.hasChanged ?? notEqual)(value, oldValue)) tracker.note(name, oldValue, false);
         }
-      } catch {
-        // Never let tracking break the element.
-      }
+      } catch {}
       return requestUpdate.apply(this, args);
     };
 
@@ -238,7 +171,6 @@ class LitUpdateTracker implements ReactiveController {
           return render.apply(this, args);
         } finally {
           const frame = tracker.frames[tracker.frames.length - 1];
-          // Only Lit's own call to render() during the update counts.
           if (frame && frame.phase === "render" && frame.renderEnd === null) frame.renderEnd = now();
         }
       };
@@ -259,15 +191,12 @@ class LitUpdateTracker implements ReactiveController {
       }
       try {
         tracker.end(frame, failed, error);
-      } catch {
-        // Never let tracking replace the element's own result or error.
-      }
+      } catch {}
       if (failed) throw error;
       return result;
     };
   }
 
-  /** Looked up each time, so rules added later still apply. */
   private get group(): string {
     return groupFor(this.tag, this.host.constructor);
   }
@@ -276,14 +205,10 @@ class LitUpdateTracker implements ReactiveController {
     return this.frames[this.frames.length - 1];
   }
 
-  /** Record one accepted change (or a bare `requestUpdate()`). */
   private note(property: PropertyKey | undefined, oldValue: unknown, initial: boolean): void {
     const frame = this.current;
     if (frame) {
-      // This element is updating. Changes before render join this update.
-      // From render() until Lit marks the update done, changes are dropped.
-      // After that (while writing to the page, or in updated()), Lit starts
-      // another update straight away: a cascading update.
+// Lit discards changes made during render, so they are skipped here too.
       if (frame.phase === "render" && this.host.isUpdatePending) return;
       if (frame.phase !== "before-render") {
         this.cascadeNext ??=
@@ -305,7 +230,6 @@ class LitUpdateTracker implements ReactiveController {
 
   private markRoot(property: PropertyKey | undefined): void {
     const name = property === undefined ? null : String(property);
-    // Lit only updates elements that are connected, or have been before.
     if (this.host.isConnected || this.host.hasUpdated) {
       this.root = { at: now(), event: currentEvent(), property: name };
     } else {
@@ -327,7 +251,6 @@ class LitUpdateTracker implements ReactiveController {
   }
 
   hostDisconnected(): void {
-    // An element that has never updated waits until it is connected again.
     if (this.root && !this.host.hasUpdated) {
       this.rootProperty = this.root.property;
       this.root = null;
@@ -338,7 +261,6 @@ class LitUpdateTracker implements ReactiveController {
     }
   }
 
-  /** Runs after shouldUpdate and willUpdate, just before render. */
   hostUpdate(): void {
     const frame = this.current;
     if (!frame) return;
@@ -346,7 +268,6 @@ class LitUpdateTracker implements ReactiveController {
     frame.info = this.takeInfo();
   }
 
-  /** Runs after the DOM is written, just before firstUpdated/updated. */
   hostUpdated(): void {
     const frame = this.current;
     if (!frame) return;
@@ -399,10 +320,6 @@ class LitUpdateTracker implements ReactiveController {
     return info;
   }
 
-  /**
-   * Draw the "Event" and "Update" bars on the Scheduler track: from this
-   * element's change to its update starting.
-   */
   private drawUpdateWait(updateStart: number): void {
     const root = this.root;
     if (!root) return;
@@ -434,15 +351,12 @@ class LitUpdateTracker implements ReactiveController {
   }
 
   end(frame: Frame, failed: boolean, error: unknown): void {
-    // Tidy up first, so later updates are tracked even if drawing fails.
     let i = this.frames.lastIndexOf(frame);
     if (i !== -1) this.frames.splice(i, 1);
     i = updating.lastIndexOf(frame);
     if (i !== -1) updating.splice(i, 1);
     const end = now();
 
-    // hostUpdate runs only when the update goes ahead: not when shouldUpdate
-    // returns false, and not if shouldUpdate or willUpdate throws.
     const ran = frame.info !== null;
     const info = frame.info ?? this.takeInfo();
     const { tag, task } = this;
@@ -450,10 +364,6 @@ class LitUpdateTracker implements ReactiveController {
     const { start, first, cascade } = frame;
     const renderEnd = frame.renderEnd ?? frame.effectsStart ?? end;
 
-    // Properties that were given a new array or object with the same
-    // contents. If every change was like that, the render was wasted: the
-    // element rendered again with nothing new to show. Like React, the first
-    // render is never counted.
     const sameContents =
       ran && !first
         ? info.changed
@@ -462,7 +372,6 @@ class LitUpdateTracker implements ReactiveController {
         : [];
     const wasted = sameContents.length > 0 && sameContents.length === info.changed.length && !info.manual;
 
-    // Built only when a bar with details is drawn.
     const details = (): Properties => {
       const rows: Properties = [];
       if (wasted) rows.push(["Wasted render", "no property's contents changed"]);
@@ -470,7 +379,6 @@ class LitUpdateTracker implements ReactiveController {
       if (info.triggeredBy) rows.push(["Triggered by", info.triggeredBy]);
       if (info.changes > 1) rows.push(["Changes batched", String(info.changes)]);
       if (info.manual && info.changed.length === 0) rows.push(["Update requested", "requestUpdate()"]);
-      // Like React, the first render shows no "Changed Props".
       if (!first && info.changed.length) {
         rows.push(["Changed Props", ""]);
         for (const [name, old, value] of info.changed) {
@@ -483,7 +391,6 @@ class LitUpdateTracker implements ReactiveController {
       return rows;
     };
 
-    // Scheduler track.
     if (failed || ran) {
       if (cascade) {
         emit("Cascading Update", start, end, {
@@ -508,7 +415,6 @@ class LitUpdateTracker implements ReactiveController {
       schedulerEnds.set(trackGroup, Math.max(schedulerEnd(trackGroup), end));
     }
 
-    // Components track.
     if (failed) {
       emit(tag, start, end, withError({ track: Tracks.components, trackGroup, task, properties: details }, error));
       return;
@@ -544,13 +450,7 @@ class LitUpdateTracker implements ReactiveController {
   }
 }
 
-/**
- * Call from a LitElement's constructor:
- *
- *   constructor() { super(); trackLitUpdates(this); }
- *
- * Does nothing if instrumentation is turned off at that point.
- */
+/** Tracks a Lit element's updates. Call it from the element's constructor. */
 export function trackLitUpdates(host: ReactiveElement): void {
   if (!isEnabled()) return;
   const h = host as Host & { [TRACKED]?: true };
@@ -560,14 +460,7 @@ export function trackLitUpdates(host: ReactiveElement): void {
   new LitUpdateTracker(h);
 }
 
-/**
- * Track every Lit element defined from now on, with no change to their code.
- * Also instruments every other custom element, like `instrumentAll`. It has
- * to run before the app's components load; importing
- * `tuppence/register` first does this.
- *
- * Returns a function that stops tracking newly defined elements.
- */
+/** Tracks every Lit element defined from now on. Returns a function that stops it. */
 export function trackAllLitElements(): () => void {
   return instrumentAll({
     onDefine(ctor) {
@@ -575,8 +468,6 @@ export function trackAllLitElements(): () => void {
         addInitializer?: (init: (el: ReactiveElement) => void) => void;
         prototype: { performUpdate?: unknown };
       };
-      // Lit runs initializers for every new instance of the class and its
-      // subclasses, from inside its own constructor.
       if (typeof lit.addInitializer === "function" && typeof lit.prototype.performUpdate === "function") {
         lit.addInitializer((el) => trackLitUpdates(el));
       }

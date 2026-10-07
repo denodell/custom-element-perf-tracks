@@ -1,7 +1,3 @@
-// End-to-end: run the demo in a real Chrome/Chromium, record a performance
-// trace, and parse it with Chrome DevTools' own trace engine (the code the
-// Performance panel uses) to check which tracks it would draw.
-// Set CHROME_PATH if Chrome is not found.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -34,14 +30,12 @@ async function recordDemo(query) {
     server.close();
   }
 
-  // Parse with DevTools' trace engine.
   const { analyzeEvents } = await import("@paulirish/trace_engine/analyze-trace.mjs");
   const { traceEvents } = JSON.parse(fs.readFileSync(file, "utf8"));
   const { parsedTrace } = await analyzeEvents(traceEvents);
   return parsedTrace.data?.ExtensionTraceData ?? parsedTrace.ExtensionTraceData;
 }
 
-// Bars drawn with details carry React's invisible zero-width-space prefix.
 const clean = (name) => name.replace(/^\u200b/, "");
 
 function summarise(data) {
@@ -63,10 +57,8 @@ for (const [mode, query] of [
     assert.deepEqual(Object.keys(tracks).sort(), ["Components", "Scheduler", "Upgrade"]);
     const names = (t) => tracks[t].map((e) => clean(e.name));
 
-    // Upgrade: one define call.
     assert.deepEqual(names("Upgrade"), ["demo-card define"]);
 
-    // Components: lifecycle callbacks, Lit renders and effects, Stencil.
     for (const name of [
       "demo-card connected",
       "demo-card attributeChanged",
@@ -78,12 +70,10 @@ for (const [mode, query] of [
       assert.ok(names("Components").includes(name), `Components is missing ${name}`);
     }
 
-    // Scheduler: React's step names.
     for (const name of ["Event: click", "Render", "Commit", "Cascading Update"]) {
       assert.ok(names("Scheduler").includes(name), `Scheduler is missing ${name}`);
     }
 
-    // Bars nest the way they do in React: Render sits inside Cascading Update.
     const cascade = tracks.Scheduler.find((e) => clean(e.name) === "Cascading Update");
     const children = [...data.entryToNode.values()]
       .filter((node) => node.parent?.entry === cascade)
@@ -96,7 +86,6 @@ for (const [mode, query] of [
     }
 
     if (mode === "timestamp") {
-      // The lightest mode draws no details at all.
       const withDetails = Object.values(tracks).flat().filter((e) => e.devtoolsObj?.properties?.length);
       assert.equal(withDetails.length, 0);
       return;

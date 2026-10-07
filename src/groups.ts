@@ -1,15 +1,5 @@
 import { defaultTrackGroup } from "./emit.js";
 
-/**
- * Which DevTools track group each element's bars go under.
- *
- * By default every bar goes under one group, `configure({ trackGroup })`.
- * A design system can claim its own elements, by tag prefix or by base
- * class, so its bars sit in a group of their own, separate from the app's
- * and from any other library on the page. Rules are added one at a time and
- * never replace each other, so several libraries can each add their own.
- */
-
 interface Rule {
   trackGroup: string;
 }
@@ -22,21 +12,7 @@ const prefixRules: PrefixRule[] = [];
 const classRules = new WeakMap<object, Rule[]>();
 let classRuleCount = 0;
 
-/**
- * Put every element matching `match` under its own track group in DevTools,
- * instead of the default one.
- *
- * - A string matches tag names that start with it: `"acme-"` covers
- *   `<acme-button>`, `<acme-menu>` and so on.
- * - A class matches that class and every class that extends it, so passing
- *   a design system's base class covers all of its components.
- *
- * A class rule wins over a prefix rule. Among prefixes, the longest match
- * wins. When two rules match equally, the one added last wins.
- *
- * Can be called at any time; bars drawn afterwards use the new group.
- * Returns a function that removes this rule.
- */
+/** Puts elements matching a tag prefix or base class under their own DevTools group. */
 export function assignTrackGroup(match: string | CustomElementConstructor, trackGroup: string): () => void {
   if (typeof trackGroup !== "string" || trackGroup === "") {
     throw new TypeError("assignTrackGroup: trackGroup must be a non-empty string");
@@ -79,13 +55,8 @@ function once(fn: () => void): () => void {
   };
 }
 
-/**
- * @internal The track group for an element, from its tag name and, where
- * known, its class.
- */
 export function groupFor(tag: string, ctor?: unknown): string {
   if (classRuleCount > 0 && typeof ctor === "function") {
-    // Walk up the class chain: the nearest class with a rule wins.
     let c: unknown = ctor;
     while (typeof c === "function" && c !== Function.prototype) {
       const list = classRules.get(c);

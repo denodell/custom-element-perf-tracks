@@ -2,7 +2,6 @@
 <meta charset="utf-8">
 <title>register scenarios</title>
 <script>
-  // ?lit=2 runs every scenario against Lit 2 instead of Lit 3.
   const lit2 = new URLSearchParams(location.search).get("lit") === "2";
   const base = lit2 ? "/node_modules/lit2/node_modules/" : "/node_modules/";
   const lit = lit2 ? "/node_modules/lit2/" : "/node_modules/lit/";
@@ -23,7 +22,6 @@
 </script>
 <body>
 <auto-plain></auto-plain><auto-plain></auto-plain><auto-plain></auto-plain>
-<!-- The one-line setup, loaded before any component is defined. -->
 <script type="module" src="/dist/register.js"></script>
 <script type="module">
   import { configure, definePerf } from "/dist/index.js";
@@ -56,7 +54,6 @@
     },
 
     async litElementsWithoutAnyCode() {
-      // Defined the way Lit's @customElement decorator does it.
       class AutoCounter extends LitElement {
         static properties = { count: { type: Number } };
         constructor() { super(); this.count = 0; }
@@ -86,8 +83,6 @@
       document.body.append(el);
       await el.updateComplete;
       const got = await collect(async () => { el.v = 1; await el.updateComplete; });
-      // Render bars only: under load, the empty updated() can take long
-      // enough to get an effects bar of its own.
       return on("Components", got)
         .filter((b) => b.name.startsWith("auto-") && b.color.startsWith("primary"))
         .map((b) => b.name);

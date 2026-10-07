@@ -26,8 +26,6 @@ const LIFECYCLE: readonly LifecycleCallback[] = [
   "adoptedCallback",
 ];
 
-// React colors mounting and unmounting with "warning"; other callbacks use
-// the same blue as component renders.
 const COLORS: Record<LifecycleCallback, TrackColor> = {
   connectedCallback: "warning",
   disconnectedCallback: "warning",
@@ -38,22 +36,14 @@ const COLORS: Record<LifecycleCallback, TrackColor> = {
 const PATCHED = Symbol.for("tuppence.patched");
 const WRAPPED = Symbol.for("tuppence.wrapped");
 
-/**
- * Callbacks currently being timed, per element. When a subclass and its base
- * class are both instrumented, the subclass's wrapper calls the base's
- * wrapper (through `super`). Only the outermost one draws a bar.
- */
 const inProgress = new WeakMap<Element, Set<LifecycleCallback>>();
 
-/** While `definePerf` runs `customElements.define`, counts upgrades. */
 let upgrading: { ctor: CustomElementConstructor; count: number } | null = null;
 
 export interface InstrumentOptions {
-  /** Which lifecycle callbacks to time. Default: all four. */
   callbacks?: readonly LifecycleCallback[];
 }
 
-/** @internal The name an element was registered under, falling back to its tag. */
 export function labelFor(el: Element): string {
   const ctor = el.constructor as CustomElementConstructor;
   const registered =
@@ -63,16 +53,7 @@ export function labelFor(el: Element): string {
   return registered ?? el.localName;
 }
 
-/**
- * Wrap a custom element class's lifecycle callbacks so each call shows up as
- * a bar on the "Components" track. Works on any class, including Lit, Stencil
- * and hand-written elements.
- *
- * Call it before the class is passed to `customElements.define`: browsers
- * read the callbacks at that moment, so later changes have no effect. It
- * changes the class's prototype in place, and does nothing if instrumentation
- * is turned off or the class is already instrumented.
- */
+/** Times a class's lifecycle callbacks. Call it before the class is defined. */
 export function instrumentElement(
   ctor: CustomElementConstructor,
   options: InstrumentOptions = {},
@@ -80,7 +61,6 @@ export function instrumentElement(
   instrument(ctor, options);
 }
 
-/** Returns a function that puts the class back the way it was. */
 function instrument(ctor: CustomElementConstructor, options: InstrumentOptions): () => void {
   const nothing = () => {};
   if (!isEnabled()) return nothing;
@@ -107,7 +87,8 @@ function instrument(ctor: CustomElementConstructor, options: InstrumentOptions):
       if (!isEnabled()) return call();
 
       let active = inProgress.get(this);
-      if (active?.has(cb)) return call(); // an outer wrapper is already timing this
+// When a subclass and its base class are both wrapped, the outer wrapper draws the one bar.
+      if (active?.has(cb)) return call();
       if (!active) inProgress.set(this, (active = new Set()));
       active.add(cb);
 
@@ -127,7 +108,6 @@ function instrument(ctor: CustomElementConstructor, options: InstrumentOptions):
       }
       active.delete(cb);
       const end = now();
-      // Like React's effects, very short callbacks are not drawn.
       if (failed || end - start >= minDuration()) {
         const tag = labelFor(this);
         const options: EmitOptions = {
@@ -168,7 +148,6 @@ function instrument(ctor: CustomElementConstructor, options: InstrumentOptions):
 
 type Define = (name: string, ctor: CustomElementConstructor, options?: ElementDefinitionOptions) => void;
 
-/** The registry's own `define`, saved while `instrumentAll` has replaced it. */
 let nativeDefine: Define | null = null;
 
 function define(name: string, ctor: CustomElementConstructor, options?: ElementDefinitionOptions): void {
@@ -176,21 +155,14 @@ function define(name: string, ctor: CustomElementConstructor, options?: ElementD
   else customElements.define(name, ctor, options);
 }
 
-/**
- * A drop-in for `customElements.define` that also instruments the class.
- *
- * The `define` call itself is timed on the "Upgrade" track, because that is
- * when the browser upgrades every matching element already in the page,
- * including those inside shadow roots.
- */
+/** `customElements.define`, plus lifecycle bars and an Upgrade bar for the define itself. */
 export function definePerf(
   tagName: string,
   ctor: CustomElementConstructor,
   options?: ElementDefinitionOptions & InstrumentOptions,
 ): void {
-  // Leave the class untouched if `define` is going to fail anyway.
   if (customElements.get(tagName) || customElements.getName?.(ctor)) {
-    define(tagName, ctor, options); // throws the browser's own error
+    define(tagName, ctor, options);
     return;
   }
   const restore = instrument(ctor, options ?? {});
@@ -199,10 +171,9 @@ export function definePerf(
     return;
   }
 
-  // Upgrades are counted through the timed `connectedCallback` wrapper.
   const connected = ctor.prototype.connectedCallback as { [WRAPPED]?: true } | undefined;
   const countable = Boolean(connected?.[WRAPPED]);
-  const previous = upgrading; // `define` can run inside another element's callback
+  const previous = upgrading;
   const current = { ctor, count: 0 };
   upgrading = current;
   const start = now();
@@ -211,7 +182,6 @@ export function definePerf(
     define(tagName, ctor, options);
     failed = false;
   } catch (error) {
-    // An invalid name, for example: leave the class as it was.
     restore();
     throw error;
   } finally {
@@ -226,10 +196,6 @@ export function definePerf(
 }
 
 export interface InstrumentAllOptions {
-  /**
-   * Called with each class just before it is defined, while its instances
-   * do not exist yet. The Lit adapter uses this to track Lit elements.
-   */
   onDefine?: (ctor: CustomElementConstructor, name: string) => void;
 }
 
@@ -237,14 +203,7 @@ const defineHooks = new Set<NonNullable<InstrumentAllOptions["onDefine"]>>();
 let users = 0;
 let unpatch: (() => void) | null = null;
 
-/**
- * Instrument every custom element defined from now on, as if each one had
- * been defined with `definePerf`. Elements defined before this runs are not
- * affected, so it has to run before the app's components load.
- *
- * Returns a function that stops instrumenting newly defined elements.
- * Does nothing if instrumentation is turned off at this point.
- */
+/** Instruments every custom element defined from now on. Returns a function that stops it. */
 export function instrumentAll(options: InstrumentAllOptions = {}): () => void {
   if (!isEnabled() || typeof customElements === "undefined") return () => {};
   const hook = options.onDefine;
@@ -266,15 +225,12 @@ export function instrumentAll(options: InstrumentAllOptions = {}): () => void {
       for (const h of defineHooks) {
         try {
           h(ctor, name);
-        } catch {
-          // Never let instrumentation stop an element being defined.
-        }
+        } catch {}
       }
       definePerf(name, ctor, opts);
     };
     registry.define = patched;
     unpatch = () => {
-      // Only undo our own change, in case something else wrapped it since.
       if (registry.define === patched) {
         if (hadOwn) registry.define = previous;
         else delete (registry as { define?: unknown }).define;

@@ -7,7 +7,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json" };
 
-/** Serve the repo root on a free port. */
 export function serve() {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
@@ -37,18 +36,12 @@ const CANDIDATES = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
 ].filter(Boolean);
 
-/** Path to a local Chrome or Chromium, or null. Set CHROME_PATH to choose one. */
 export function findChrome() {
   return CANDIDATES.find((p) => fs.existsSync(p)) ?? null;
 }
 
 let coverageFiles = 0;
 
-/**
- * Launch headless Chrome. When COVERAGE_DIR is set (npm run coverage), every
- * page records which parts of the library ran, and the results are saved in
- * the same format Node uses, so one report covers browser and Node tests.
- */
 export async function launch() {
   const { default: puppeteer } = await import("puppeteer-core");
   const browser = await puppeteer.launch({

@@ -15,7 +15,6 @@ function collect() {
 
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
-// Read bars back as measures.
 configure({ strategy: "measure" });
 let n = 0;
 const unique = (s) => `${s}-${n++}`;
@@ -133,7 +132,6 @@ test("Stencil timings are copied onto the React-style tracks, once each", async 
   const unwatch = observeStencilProfile();
   assert.equal(observeStencilProfile(), unwatch, "second call reuses the first");
   const t = performance.now();
-  // The order Stencil records them in: render ends inside update.
   performance.measure("[Stencil] connectedCallback() <my-widget>", { start: t, end: t + 1 });
   performance.measure("[Stencil] render() <my-widget>", { start: t + 2, end: t + 5 });
   performance.measure("[Stencil] update() <my-widget>", { start: t + 1.5, end: t + 7 });
@@ -160,8 +158,6 @@ test("Stencil timings are copied onto the React-style tracks, once each", async 
     ["my-widget", "Components", "secondary", 7, 2],
   ]);
 });
-
-// ---- Value formatting, colors and safety nets ----------------------------
 
 import { preview, renderColor, effectColor, createTask } from "../dist/emit.js";
 import { observeStencilProfile as observeAgain } from "../dist/adapters/stencil.js";
@@ -265,7 +261,6 @@ test("rerouted errors go to console.error where reportError does not exist", asy
 
 test("Stencil: short connectedCallback, postUpdate and scheduleUpdate timings are hidden", async () => {
   configure({ minDuration: 0.5 });
-  // Watching picks up timings already recorded, so start from an empty buffer.
   performance.clearMeasures();
   const { seen, stop } = collect();
   const unwatch = observeAgain();
@@ -281,8 +276,6 @@ test("Stencil: short connectedCallback, postUpdate and scheduleUpdate timings ar
   configure({ minDuration: 0.05 });
   assert.deepEqual(seen.map((e) => Math.round(e.duration)).sort(), [2, 3]);
 });
-
-// ---- The empty production version ----------------------------------------
 
 test("the production version has exactly the same exports, and does nothing", async () => {
   const dev = await import("../dist/index.js");
@@ -351,7 +344,6 @@ test("Stencil module loads go on Loading rows, so overlapping loads never share 
   const { seen, stop } = collect();
   const unwatch = observeAgain();
   const t = performance.now();
-  // The app load wraps everything; three loads overlap; one comes after.
   performance.measure("[Stencil] demo initial load (by my-app)", { start: t, end: t + 100 });
   performance.measure("[Stencil] Load module for <a-one>", { start: t + 10, end: t + 50 });
   performance.measure("[Stencil] Load module for <a-two>", { start: t + 20, end: t + 60 });
@@ -363,11 +355,8 @@ test("Stencil module loads go on Loading rows, so overlapping loads never share 
   const rows = Object.fromEntries(seen.map((e) => [e.name.replace(/^\u200b/, ""), e.detail.devtools.track]));
   assert.equal(rows["demo initial load (by my-app)"], "Loading");
   assert.equal(new Set([rows["a-one"], rows["a-two"], rows["a-three"]]).size, 3, JSON.stringify(rows));
-  // a-four overlaps nothing but the app load, which it sits inside.
   assert.equal(rows["a-four"], "Loading");
 });
-
-// ---- Edge cases ----------------------------------------------------------
 
 test("rerouteMeasures skips entries the map function turns down", async () => {
   const { seen, stop } = collect();
@@ -399,7 +388,6 @@ test("Stencil: more than eight overlapping loads share the last Loading row", as
   configure({ minDuration: 0.05 });
   const { seen, stop } = collect();
   const unwatch = observeAgain();
-  // Well after the bars from earlier tests, so no row is still in use.
   const t = performance.now() + 10000;
   for (let i = 0; i < 10; i++) {
     performance.measure(`[Stencil] Load module for <many-${i}>`, { start: t + i, end: t + 50 + i });
@@ -431,7 +419,6 @@ test("without customElements (Node, some SSR), the element helpers do nothing ha
   const stop = instrumentAll();
   stop();
   stop();
-  // Falls back to the tag name when there is no registry to ask.
   assert.equal(labelFor({ constructor: class {}, localName: "x-fallback" }), "x-fallback");
   class Plain { connectedCallback() { return "ran"; } }
   instrumentElement(Plain);
@@ -473,8 +460,6 @@ test("with no console, the timestamp strategy falls back to performance.measure"
   assert.deepEqual(JSON.parse(r.stdout), ["\u200bno-console"]);
 });
 
-// ---- Track groups ----------------------------------------------------------
-
 import { assignTrackGroup } from "../dist/index.js";
 
 test("emit can put one bar under its own track group", async () => {
@@ -503,7 +488,7 @@ test("tag prefixes put Stencil elements in their own groups: longest prefix wins
     assignTrackGroup("beta-", "Beta (old)"),
     assignTrackGroup("beta-", "Beta"),
   ];
-  performance.clearMeasures(); // the Stencil observer replays buffered measures
+  performance.clearMeasures();
   const { seen, stop } = collect();
   const unwatch = observeStencilProfile();
   const t = performance.now();
@@ -523,8 +508,6 @@ test("tag prefixes put Stencil elements in their own groups: longest prefix wins
     ["app-shell", "Components", "Web Components"],
     ["beta-menu", "Components", "Beta"],
   ]);
-  // Each group has its own Loading rows, so loads in different groups never
-  // push each other onto a second row.
   assert.deepEqual(rows.filter((r) => r[1].startsWith("Loading")).sort(), [
     ["acme-button", "Loading", "Acme"],
     ["beta-menu", "Loading", "Beta"],
@@ -552,8 +535,6 @@ test("the production assignTrackGroup does nothing and returns an undo function"
   assert.equal(typeof undo, "function");
   undo();
 });
-
-// ---- Wasted renders ------------------------------------------------------
 
 import { sameContentsNewObject as same } from "../dist/compare.js";
 
