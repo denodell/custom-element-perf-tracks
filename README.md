@@ -1,10 +1,10 @@
 # Tuppence
 
-Tuppence shows your web components as their own tracks in the Chrome DevTools Performance panel.
+Tuppence adds tracks to the Chrome DevTools Performance panel that show when your web components update, what caused it, and how long it took.
 
 ![Chrome DevTools after clicking a Lit button in the demo. Under Web Components, the Scheduler track shows "Event: click" followed by a blue Render bar and a short Commit bar. The Components track below shows a demo-counter bar lined up with Render.](docs/devtools-lit.png)
 
-React 19.2 added [performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks) that show what caused each update, how long it took, and which components did the work. Tuppence adds the same tracks for Lit, Stencil and other custom elements, with the same names and colors. It also points out renders that didn't need to happen.
+It works like the [performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks) React 19.2 added, with the same names and colors, but for Lit, Stencil and other custom elements. It also points out renders that didn't need to happen.
 
 ## Install
 
