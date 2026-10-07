@@ -4,6 +4,8 @@ Find out which web component did it. Tuppence shows your web components in the C
 
 React 19.2 added [performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks) to the Performance panel, so React developers can see what caused each update, how long each step took, and which components did the work. This library adds the same tracks for custom elements, Lit and Stencil, with the same names and colors.
 
+Building a design system? Your components run inside apps you don't control. When one of them is slow, the app team can't see which component is doing the work, and when the app passes it a new array or object on every render, your component gets the blame. Tuppence gives your components their own group in DevTools, in every app that uses them, and marks renders the app caused for nothing. See [Design systems](#design-systems).
+
 ![Chrome DevTools after clicking a Lit button in the demo. Under Web Components, the Scheduler track shows "Event: click" followed by a blue Render bar and a short Commit bar. The Components track below shows a demo-counter bar lined up with Render.](docs/devtools-lit.png)
 
 ## Install
@@ -23,6 +25,42 @@ import "tuppence/register";
 Every custom element defined after that is tracked, and Lit elements also get their updates tracked, with no other changes to your code. Record a profile in the Performance panel and a **Web Components** group appears.
 
 None of it reaches production builds. See [Production builds](#production-builds).
+
+## Design systems
+
+A design system can turn Tuppence on for all of its components at once, from its own code, so every app that uses them sees their work in DevTools without any setup of its own. Two lines in the base class do it:
+
+```js
+import { LitElement } from "lit";
+import { trackLitUpdates } from "tuppence/lit";
+import { assignTrackGroup } from "tuppence";
+
+export class AcmeElement extends LitElement {
+  constructor() {
+    super();
+    trackLitUpdates(this);
+  }
+}
+
+assignTrackGroup(AcmeElement, "Acme Design System");
+```
+
+Every component that extends `AcmeElement` now shows up under its own **Acme Design System** group in the Performance panel, separate from the app's tracks. When an app re-renders a component by passing it a new array or object with the same contents, that render is drawn in yellow and named as a wasted render, along with the property that caused it.
+
+Two things design system teams usually ask:
+
+- **What does it cost the apps that use us?** Nothing in production. The package has an empty version that bundlers use in production builds, so apps ship none of it. See [Production builds](#production-builds).
+- **Will it clash with the app, or with other libraries using Tuppence?** No. Each `assignTrackGroup` call adds a rule without replacing anyone else's, so every library keeps its own group.
+
+`assignTrackGroup` also takes a tag prefix, for components that don't share a base class:
+
+```js
+assignTrackGroup("acme-", "Acme Design System");
+```
+
+A class rule covers the class and everything that extends it, and wins over a prefix rule. Among prefixes, the longest match wins. Each group gets its own Scheduler, Components and Upgrade tracks.
+
+To see it working, `npm run demo:design-system` serves a React app built on a small Lit design system. See [Demo](#demo).
 
 ## What you see
 
@@ -90,24 +128,6 @@ Stencil's timing for `render()` includes patching the page, so each update is on
 
 Any custom element gets the **Upgrade** bars and the lifecycle bars on **Components** from the one-line setup, whatever built it. That includes Vue components packaged with `defineCustomElement`. The **Scheduler** track and the per-update bars with **Changed Props** need a hook into the library's own update cycle, so they cover Lit and Stencil only.
 
-## Design systems
-
-By default every element's bars go in one **Web Components** group. A design system can put its own elements in a group of their own, so its work shows up separately from the app's, and from any other library on the page:
-
-```js
-import { assignTrackGroup } from "tuppence";
-
-// Every element that extends the design system's base class.
-assignTrackGroup(AcmeElement, "Acme Design System");
-
-// Or every element whose tag starts with a prefix.
-assignTrackGroup("acme-", "Acme Design System");
-```
-
-Each call adds a rule without replacing anyone else's, so the app and every library it uses can add their own. A class rule covers the class and everything that extends it, and wins over a prefix rule. Among prefixes, the longest match wins. Each group gets its own Scheduler, Components and Upgrade tracks.
-
-A design system can depend on this package directly. Apps that use it get the empty production version in their production builds, so the rules cost nothing there.
-
 ## Production builds
 
 The package has an empty version with the same API, and bundlers pick it for production builds:
@@ -148,6 +168,14 @@ npm run demo
 ```
 
 Open `http://localhost:5173/demo/`, record in the Performance panel, click a few buttons, then stop.
+
+For the design system demo, a React shop using a small Lit design system:
+
+```sh
+npm run demo:design-system
+```
+
+Open `http://localhost:5174/`, record, click **Add to cart** a few times, then stop. The **Acme Design System** group shows each table render in yellow as a wasted render. Tick **Fix it** and record again: the table stops re-rendering.
 
 ## Limitations
 
