@@ -18,6 +18,7 @@ import {
 } from "../emit.js";
 import { instrumentAll, labelFor } from "../define.js";
 import { groupFor } from "../groups.js";
+import { sameContentsNewObject } from "../compare.js";
 
 /**
  * Lit update tracking, laid out the way React's performance tracks are.
@@ -35,6 +36,10 @@ import { groupFor } from "../groups.js";
  *   Mount          wraps an element's first update
  *   my-element     its render, with "Changed Props" when properties changed
  *   my-element     its firstUpdated()/updated() work, in the effects color
+ *
+ * A render where every changed property was only given a new array or
+ * object with the same contents is marked as a wasted render, in the
+ * warning color, naming the properties.
  *
  * Colors and names follow React's, so the two read the same way.
  *
@@ -445,9 +450,23 @@ class LitUpdateTracker implements ReactiveController {
     const { start, first, cascade } = frame;
     const renderEnd = frame.renderEnd ?? frame.effectsStart ?? end;
 
+    // Properties that were given a new array or object with the same
+    // contents. If every change was like that, the render was wasted: the
+    // element rendered again with nothing new to show. Like React, the first
+    // render is never counted.
+    const sameContents =
+      ran && !first
+        ? info.changed
+            .filter(([, old, value]) => value !== UNREADABLE && sameContentsNewObject(old, value))
+            .map(([name]) => name)
+        : [];
+    const wasted = sameContents.length > 0 && sameContents.length === info.changed.length && !info.manual;
+
     // Built only when a bar with details is drawn.
     const details = (): Properties => {
       const rows: Properties = [];
+      if (wasted) rows.push(["Wasted render", "no property's contents changed"]);
+      if (sameContents.length) rows.push(["Same contents, new object", sameContents.join(", ")]);
       if (info.triggeredBy) rows.push(["Triggered by", info.triggeredBy]);
       if (info.changes > 1) rows.push(["Changes batched", String(info.changes)]);
       if (info.manual && info.changed.length === 0) rows.push(["Update requested", "requestUpdate()"]);
@@ -509,8 +528,9 @@ class LitUpdateTracker implements ReactiveController {
     emit(tag, start, renderEnd, {
       track: Tracks.components,
       trackGroup,
-      color: renderColor(renderEnd - start),
+      color: wasted ? "warning" : renderColor(renderEnd - start),
       task,
+      tooltip: wasted ? `${tag}: wasted render (${sameContents.join(", ")}: new object, same contents)` : undefined,
       properties: details,
     });
     if (frame.effectsStart !== null && end - frame.effectsStart >= minDuration()) {

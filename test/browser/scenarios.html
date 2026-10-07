@@ -845,6 +845,41 @@
       };
     },
 
+    async litWastedRenders() {
+      class Thing {}
+      class LitWaste extends LitElement {
+        static properties = { items: { type: Array }, options: { type: Object }, when: { type: Object }, label: { type: String } };
+        constructor() {
+          super();
+          this.items = [1, 2, 3];
+          this.options = { dense: true, sort: { by: "name" } };
+          this.when = new Date(0);
+          this.label = "a";
+          trackLitUpdates(this);
+        }
+        render() { work(0.3); return html`${this.items.length}${this.label}`; }
+      }
+      customElements.define("lit-waste", LitWaste);
+      const el = new LitWaste();
+      const mount = await collect(async () => { document.body.append(el); await el.updateComplete; });
+      const bar = async (fn) => {
+        const got = await collect(async () => { fn(); await el.updateComplete; });
+        const b = on("Components", got).find((x) => x.name === "lit-waste" && !x.color.startsWith("secondary"));
+        return { color: b.color, wasted: b.props["Wasted render"] ?? null, same: b.props["Same contents, new object"] ?? null };
+      };
+      const mountBar = on("Components", mount).find((x) => x.name === "lit-waste");
+      return {
+        mount: mountBar.props["Wasted render"] ?? null,
+        newArray: await bar(() => { el.items = [1, 2, 3]; }),
+        newNested: await bar(() => { el.options = { sort: { by: "name" }, dense: true }; el.when = new Date(0); }),
+        mixed: await bar(() => { el.items = [1, 2, 3]; el.label = "b"; }),
+        realChange: await bar(() => { el.items = [1, 2, 3, 4]; }),
+        classInstances: await bar(() => { el.items = [new Thing()]; }).then(() => bar(() => { el.items = [new Thing()]; })),
+        withRequestUpdate: await bar(() => { el.items = [new Thing()].map(() => 1); el.requestUpdate(); }).then(() =>
+          bar(() => { el.items = [1]; el.requestUpdate(); })),
+      };
+    },
+
     // ---- Track groups ----------------------------------------------------
 
     async trackGroupsByPrefixAndClass() {

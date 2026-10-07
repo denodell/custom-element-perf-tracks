@@ -47,6 +47,25 @@ for (const lit of ["3", "2"]) {
       assert.equal(result("timestampStrategyAddsNothingToBuffer"), 0);
     });
 
+    test("Lit: a render caused only by new objects with the same contents is marked as wasted", { skip }, () => {
+      const r = result("litWastedRenders");
+      assert.equal(r.mount, null, "the first render is never wasted");
+      const wasted = (same) => ({ color: "warning", wasted: "no property's contents changed", same });
+      assert.deepEqual(r.newArray, wasted("items"));
+      assert.deepEqual(r.newNested, wasted("options, when"));
+      // Another property really changed, so the render was needed, but the
+      // new-object property is still named.
+      assert.equal(r.mixed.wasted, null);
+      assert.equal(r.mixed.same, "items");
+      assert.notEqual(r.mixed.color, "warning");
+      assert.deepEqual([r.realChange.wasted, r.realChange.same], [null, null]);
+      // Class instances are only the same if they are the very same object.
+      assert.deepEqual([r.classInstances.wasted, r.classInstances.same], [null, null]);
+      // A bare requestUpdate() asked for the render, so it is not wasted.
+      assert.equal(r.withRequestUpdate.wasted, null);
+      assert.equal(r.withRequestUpdate.same, "items");
+    });
+
     test("design system elements go under their own track group, by base class or tag prefix", { skip }, () => {
       const r = result("trackGroupsByPrefixAndClass");
       for (const key of [
