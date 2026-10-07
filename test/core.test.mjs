@@ -472,3 +472,83 @@ test("with no console, the timestamp strategy falls back to performance.measure"
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), ["\u200bno-console"]);
 });
+
+// ---- Track groups ----------------------------------------------------------
+
+import { assignTrackGroup } from "../dist/index.js";
+
+test("emit can put one bar under its own track group", async () => {
+  const { seen, stop } = collect();
+  emit("grouped", performance.now() - 1, performance.now(), { track: "Components", trackGroup: "Acme" });
+  emit("default", performance.now() - 1, performance.now(), { track: "Components" });
+  await tick();
+  stop();
+  assert.deepEqual(
+    seen.map((e) => [e.name, e.detail.devtools.trackGroup]),
+    [["grouped", "Acme"], ["default", "Web Components"]],
+  );
+});
+
+test("assignTrackGroup checks its arguments", () => {
+  assert.throws(() => assignTrackGroup("acme-", ""), TypeError);
+  assert.throws(() => assignTrackGroup("acme-"), TypeError);
+  assert.throws(() => assignTrackGroup("", "Acme"), TypeError);
+  assert.throws(() => assignTrackGroup(42, "Acme"), TypeError);
+});
+
+test("tag prefixes put Stencil elements in their own groups: longest prefix wins, then the latest", async () => {
+  const undo = [
+    assignTrackGroup("acme-", "Acme"),
+    assignTrackGroup("ACME-CHART-", "Acme Charts"),
+    assignTrackGroup("beta-", "Beta (old)"),
+    assignTrackGroup("beta-", "Beta"),
+  ];
+  performance.clearMeasures(); // the Stencil observer replays buffered measures
+  const { seen, stop } = collect();
+  const unwatch = observeStencilProfile();
+  const t = performance.now();
+  for (const tag of ["acme-button", "acme-chart-bar", "beta-menu", "app-shell"]) {
+    performance.measure(`[Stencil] render() <${tag}>`, { start: t, end: t + 1 });
+  }
+  performance.measure("[Stencil] Load module for <acme-button>", { start: t, end: t + 3 });
+  performance.measure("[Stencil] Load module for <beta-menu>", { start: t + 1, end: t + 2 });
+  await tick();
+  unwatch();
+  stop();
+  for (const u of undo) u();
+  const rows = seen.map((e) => [e.name.replace(/^​/, ""), e.detail.devtools.track, e.detail.devtools.trackGroup]);
+  assert.deepEqual(rows.filter((r) => r[1] === "Components").sort(), [
+    ["acme-button", "Components", "Acme"],
+    ["acme-chart-bar", "Components", "Acme Charts"],
+    ["app-shell", "Components", "Web Components"],
+    ["beta-menu", "Components", "Beta"],
+  ]);
+  // Each group has its own Loading rows, so loads in different groups never
+  // push each other onto a second row.
+  assert.deepEqual(rows.filter((r) => r[1].startsWith("Loading")).sort(), [
+    ["acme-button", "Loading", "Acme"],
+    ["beta-menu", "Loading", "Beta"],
+  ]);
+});
+
+test("removing a rule puts elements back in the default group, and removing twice is harmless", async () => {
+  const undo = assignTrackGroup("gone-", "Gone");
+  undo();
+  undo();
+  performance.clearMeasures();
+  const { seen, stop } = collect();
+  const unwatch = observeStencilProfile();
+  const t = performance.now();
+  performance.measure("[Stencil] render() <gone-el>", { start: t, end: t + 1 });
+  await tick();
+  unwatch();
+  stop();
+  assert.deepEqual(seen.map((e) => e.detail.devtools.trackGroup), ["Web Components"]);
+});
+
+test("the production assignTrackGroup does nothing and returns an undo function", async () => {
+  const prod = await import("../dist/production/index.js");
+  const undo = prod.assignTrackGroup("acme-", "Acme");
+  assert.equal(typeof undo, "function");
+  undo();
+});

@@ -63,6 +63,13 @@ export function instrumentAll(_options?: InstrumentAllOptions): () => void {
   return () => {};
 }
 
+export function assignTrackGroup(
+  _match: string | CustomElementConstructor,
+  _trackGroup: string,
+): () => void {
+  return () => {};
+}
+
 export function rerouteMeasures(
   _pattern: RegExp,
   _map: (match: RegExpExecArray, entry: PerformanceEntry) => RerouteTarget | RerouteTarget[] | null,

@@ -1,5 +1,12 @@
-import { Tracks, effectColor, minDuration, renderColor } from "../emit.js";
+import { Tracks, defaultTrackGroup, effectColor, minDuration, renderColor } from "../emit.js";
 import { rerouteMeasures } from "../reroute.js";
+import { groupFor } from "../groups.js";
+
+/** The track group for a Stencil element, by tag and, once defined, class. */
+function stencilGroup(tag: string): string {
+  const ctor = typeof customElements !== "undefined" ? customElements.get(tag) : undefined;
+  return groupFor(tag, ctor);
+}
 
 let stop: (() => void) | null = null;
 
@@ -34,36 +41,42 @@ export function observeStencilProfile(): () => void {
     const [, fn, tag] = match;
     if (!tag) return null; // app-level timings such as bootstrapLazy()
     const ms = entry.duration;
+    const trackGroup = stencilGroup(tag);
 
     switch (fn) {
       case "render":
-        return { name: tag, track: Tracks.components, color: renderColor(ms) };
+        return { name: tag, track: Tracks.components, trackGroup, color: renderColor(ms) };
       case "update":
-        return { name: "Render and Commit", track: Tracks.scheduler, color: "primary-dark" };
+        return { name: "Render and Commit", track: Tracks.scheduler, trackGroup, color: "primary-dark" };
       case "postUpdate":
-        return ms >= minDuration() ? { name: tag, track: Tracks.components, color: effectColor(ms) } : null;
+        return ms >= minDuration() ? { name: tag, track: Tracks.components, trackGroup, color: effectColor(ms) } : null;
       case "connectedCallback":
         return ms >= minDuration()
-          ? { name: `${tag} connected`, track: Tracks.components, color: "warning" }
+          ? { name: `${tag} connected`, track: Tracks.components, trackGroup, color: "warning" }
           : null;
       default:
-        if (SETUP.has(fn)) return { name: `${tag} ${fn}`, track: Tracks.upgrade, color: "tertiary" };
+        if (SETUP.has(fn)) return { name: `${tag} ${fn}`, track: Tracks.upgrade, trackGroup, color: "tertiary" };
         // scheduleUpdate (the componentWill… hooks), usually near zero.
         return ms >= minDuration()
-          ? { name: `${tag} ${fn}`, track: Tracks.components, color: renderColor(ms) }
+          ? { name: `${tag} ${fn}`, track: Tracks.components, trackGroup, color: renderColor(ms) }
           : null;
     }
   });
 
-  const lanes = new Lanes(8);
+  // Each group gets its own Loading rows.
+  const lanes = new Map<string, Lanes>();
   const disconnectLoads = rerouteMeasures(
     /^\[Stencil\] (?:Load module for <([^>]+)>|(.+ initial load \(by [^)]+\)))$/,
     (match, entry) => {
       const [, tag, appLoad] = match;
       const start = entry.startTime;
       const end = start + entry.duration;
-      const lane = lanes.place(start, end);
+      const trackGroup = tag ? stencilGroup(tag) : defaultTrackGroup();
+      let rows = lanes.get(trackGroup);
+      if (!rows) lanes.set(trackGroup, (rows = new Lanes(8)));
+      const lane = rows.place(start, end);
       return {
+        trackGroup,
         name: tag ?? appLoad,
         track: lane === 1 ? Tracks.loading : `${Tracks.loading} ${lane}`,
         color: tag ? "tertiary-light" : "tertiary-dark",

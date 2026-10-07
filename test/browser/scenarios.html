@@ -27,7 +27,7 @@
   // Bars are read back through PerformanceObserver, so these run with the
   // "measure" strategy, which keeps every bar in the buffer. Bars with no
   // length are not drawn, so test components do a little work (work(0.3)).
-  import { configure, getConfig, definePerf, instrumentAll, instrumentElement, emit } from "/dist/index.js";
+  import { configure, getConfig, definePerf, instrumentAll, instrumentElement, emit, assignTrackGroup } from "/dist/index.js";
   import { trackLitUpdates } from "/dist/adapters/lit.js";
   import { LitElement, html } from "lit";
 
@@ -40,6 +40,7 @@
       if (d) bars.push({
         name: e.name,
         track: d.track,
+        group: d.trackGroup,
         color: d.color,
         rows: d.properties ?? [],
         props: Object.fromEntries(d.properties ?? []),
@@ -842,6 +843,45 @@
         rendered: el.renderRoot.textContent.trim(),
         stillTracked: names(on("Scheduler", after)).filter((n) => n === "Render"),
       };
+    },
+
+    // ---- Track groups ----------------------------------------------------
+
+    async trackGroupsByPrefixAndClass() {
+      // A design system's base class, never defined itself.
+      class AcmeElement extends LitElement {}
+      const undoClass = assignTrackGroup(AcmeElement, "Acme");
+      const undoPrefix = assignTrackGroup("beta-", "Beta");
+      class AcmeCard extends AcmeElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        connectedCallback() { super.connectedCallback(); work(0.3); }
+        render() { work(0.3); return html`${this.v}`; }
+      }
+      // Matches both rules: the class rule wins.
+      class BetaAcme extends AcmeElement { connectedCallback() { super.connectedCallback(); work(0.3); } }
+      class BetaTip extends HTMLElement { connectedCallback() { work(0.3); } }
+      class AppPage extends HTMLElement { connectedCallback() { work(0.3); } }
+      // In the page before they are defined, so each define has upgrades to time.
+      const tags = ["ds-card", "beta-acme", "beta-tip", "app-page"];
+      document.body.append(...tags.map((t) => document.createElement(t)));
+      const card = document.querySelector("ds-card");
+      const got = await collect(async () => {
+        definePerf("ds-card", AcmeCard);
+        definePerf("beta-acme", BetaAcme);
+        definePerf("beta-tip", BetaTip);
+        definePerf("app-page", AppPage);
+        await card.updateComplete;
+      });
+      undoClass();
+      undoPrefix();
+      // Rules are looked up each time, so removing them takes effect at once.
+      const after = await collect(async () => { card.v++; await card.updateComplete; });
+      const groups = {};
+      for (const b of got) (groups[`${b.track}: ${b.name}`] ??= new Set()).add(b.group);
+      const out = Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, [...v].sort().join(", ")]));
+      out.afterRemoving = [...new Set(after.map((b) => b.group))].sort().join(", ");
+      return out;
     },
   };
 
