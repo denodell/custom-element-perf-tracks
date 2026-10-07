@@ -83,6 +83,10 @@ observeStencilProfile();
 
 Stencil's timing for `render()` includes patching the page, so each update is one **Render and Commit** bar. A **Loading** track shows the app starting and each component's code being loaded, with extra rows when loads overlap.
 
+## Other libraries
+
+Any custom element gets the **Upgrade** bars and the lifecycle bars on **Components** from the one-line setup, whatever built it. That includes Vue components packaged with `defineCustomElement`. The **Scheduler** track and the per-update bars with **Changed Props** need a hook into the library's own update cycle, so they cover Lit and Stencil only.
+
 ## Design systems
 
 By default every element's bars go in one **Web Components** group. A design system can put its own elements in a group of their own, so its work shows up separately from the app's, and from any other library on the page:

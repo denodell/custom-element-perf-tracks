@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Vue custom element scenarios</title>
+<body>
+<!-- In the page before they are defined, so the define has upgrades to count. -->
+<vue-counter count="1"></vue-counter><vue-counter count="2"></vue-counter>
+<!-- The one-line setup, loaded before any component is defined. -->
+<script type="module" src="/dist/register.js"></script>
+<script type="module">
+  // Vue components packaged as web components with defineCustomElement get
+  // the element-level bars (Upgrade and lifecycle) from the one-line setup.
+  // They don't get Lit's update tracking: that would need a hook into Vue.
+  import { configure, assignTrackGroup } from "/dist/index.js";
+  import { defineCustomElement, h, ref, nextTick } from "/node_modules/vue/dist/vue.runtime.esm-browser.js";
+
+  configure({ strategy: "measure", minDuration: 0 });
+
+  const bars = [];
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      const d = e.detail?.devtools;
+      if (d) bars.push({ name: e.name, track: d.track, group: d.trackGroup, props: Object.fromEntries(d.properties ?? []) });
+    }
+  }).observe({ type: "measure" });
+
+  const work = (ms) => { const end = performance.now() + ms; while (performance.now() < end) {} };
+  const frame = () => new Promise((r) => setTimeout(r, 30));
+
+  const VueCounter = defineCustomElement({
+    props: { count: Number },
+    setup(props) {
+      const clicks = ref(0);
+      return () => {
+        work(0.3);
+        return h("button", { onClick: () => clicks.value++ }, `${props.count}:${clicks.value}`);
+      };
+    },
+  });
+
+  const scenarios = {
+    async vueElementsGetElementBars() {
+      assignTrackGroup("vue-", "Vue Design System");
+      await frame();
+      bars.length = 0;
+      customElements.define("vue-counter", VueCounter);
+      await nextTick();
+      await frame();
+
+      const els = [...document.querySelectorAll("vue-counter")];
+      const extra = document.createElement("vue-counter");
+      extra.setAttribute("count", "3");
+      document.body.append(extra);
+      await nextTick();
+      extra.shadowRoot.querySelector("button").click();
+      await nextTick();
+      const textBeforeRemove = extra.shadowRoot.textContent;
+      extra.remove();
+      await frame();
+
+      const upgrade = bars.find((b) => b.track === "Upgrade");
+      return {
+        upgrade: upgrade && [upgrade.name, upgrade.props["Elements upgraded"], upgrade.group],
+        rendered: [...els.map((el) => el.shadowRoot?.textContent), textBeforeRemove],
+        groups: [...new Set(bars.map((b) => b.group))],
+        tracks: [...new Set(bars.map((b) => b.track))].sort(),
+      };
+    },
+  };
+
+  const results = {};
+  for (const [name, fn] of Object.entries(scenarios)) {
+    try { results[name] = { ok: true, value: await fn() }; }
+    catch (e) { results[name] = { ok: false, error: String(e?.stack ?? e) }; }
+  }
+  window.__results = results;
+</script>
+</body>

@@ -420,3 +420,36 @@ for (const lit of ["3", "2"]) {
     });
   });
 }
+
+describe("Vue custom elements (defineCustomElement)", () => {
+  let server, browser, results, errors;
+
+  before(async () => {
+    if (skip) return;
+    server = await serve();
+    browser = await launch();
+    const page = await browser.newPage();
+    errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(`${server.origin}/test/browser/vue.html`);
+    await page.waitForFunction("window.__results", { timeout: 30000 });
+    results = await page.evaluate("window.__results");
+  });
+
+  after(async () => {
+    await browser?.close();
+    server?.close();
+  });
+
+  test("get Upgrade and lifecycle bars from the one-line setup, and still work", { skip }, () => {
+    assert.deepEqual(errors, [], "page errors");
+    const r = results.vueElementsGetElementBars;
+    assert.ok(r.ok, r.error);
+    assert.deepEqual(r.value.upgrade, ["vue-counter define", "2", "Vue Design System"]);
+    assert.deepEqual(r.value.rendered, ["1:0", "2:0", "3:1"], "Vue renders and handles clicks as usual");
+    assert.deepEqual(r.value.groups, ["Vue Design System"]);
+    // Element-level bars only: Lit's update tracking needs Lit.
+    assert.ok(!r.value.tracks.includes("Scheduler"), r.value.tracks.join());
+    assert.ok(r.value.tracks.includes("Components"), r.value.tracks.join());
+  });
+});
