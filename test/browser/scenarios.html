@@ -119,9 +119,10 @@
 
     async shortCallbacksHidden() {
       // Browsers round timestamps to 0.1 ms, so use a cut-off well above that.
-      configure({ minDuration: 0.5 });
+      // Generous, so the empty callback stays under it on a slow machine.
+      configure({ minDuration: 2 });
       class Quick extends HTMLElement { connectedCallback() {} }
-      class Slow extends HTMLElement { connectedCallback() { work(1); } }
+      class Slow extends HTMLElement { connectedCallback() { work(4); } }
       definePerf("quick-el", Quick);
       definePerf("slow-el", Slow);
       const got = await collect(() => {
@@ -193,7 +194,7 @@
       }
       customElements.define("lit-first", LitFirst);
       const el = new LitFirst();
-      await new Promise((r) => setTimeout(r, 40)); // created, then connected later
+      await new Promise((r) => setTimeout(r, 200)); // created, then connected later
       const got = await collect(async () => { document.body.append(el); await el.updateComplete; });
       const components = on("Components", got);
       const mount = components.find((b) => b.name === "Mount");
@@ -545,7 +546,7 @@
         document.body.append(el);
         el.remove(); // before Lit's first update runs
         await el.updateComplete;
-        await new Promise((r) => setTimeout(r, 40));
+        await new Promise((r) => setTimeout(r, 200));
         document.body.append(el);
         el.v = 1;
         await el.updateComplete;
