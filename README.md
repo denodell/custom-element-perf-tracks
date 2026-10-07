@@ -1,6 +1,6 @@
 # Tuppence
 
-Shows your web components as their own tracks in the Chrome DevTools Performance panel.
+Tuppence shows your web components as their own tracks in the Chrome DevTools Performance panel.
 
 ![Chrome DevTools after clicking a Lit button in the demo. Under Web Components, the Scheduler track shows "Event: click" followed by a blue Render bar and a short Commit bar. The Components track below shows a demo-counter bar lined up with Render.](docs/devtools-lit.png)
 
