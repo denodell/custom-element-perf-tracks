@@ -47,7 +47,7 @@ assignTrackGroup(AcmeElement, "Acme Design System");
 
 Every component that extends `AcmeElement` now shows up under its own **Acme Design System** group in the Performance panel, separate from the app's tracks. When an app re-renders a component by passing it a new array or object with the same contents, that render is drawn in yellow and named as a wasted render, along with the name of the property that got the new value.
 
-In production, apps that use your design system get Tuppence's empty version, because their bundlers swap it in automatically. See [Production builds](#production-builds). It also works alongside the app and any other libraries using Tuppence: each `assignTrackGroup` call adds a rule and leaves everyone else's in place, so each library keeps its own group.
+Apps that use your design system drop Tuppence from their production builds automatically. See [Production builds](#production-builds). It also works alongside the app and any other libraries using Tuppence: each `assignTrackGroup` call adds a rule and leaves everyone else's in place, so each library keeps its own group.
 
 `assignTrackGroup` also takes a tag prefix, for components that share a tag prefix instead of a base class:
 
