@@ -2,7 +2,6 @@
 <meta charset="utf-8">
 <title>browser scenarios</title>
 <script>
-  // ?lit=2 runs every scenario against Lit 2 instead of Lit 3.
   const lit2 = new URLSearchParams(location.search).get("lit") === "2";
   const base = lit2 ? "/node_modules/lit2/node_modules/" : "/node_modules/";
   const lit = lit2 ? "/node_modules/lit2/" : "/node_modules/lit/";
@@ -23,10 +22,6 @@
 </script>
 <body>
 <script type="module">
-  // Each scenario returns plain data; test/browser.test.mjs makes the assertions.
-  // Bars are read back through PerformanceObserver, so these run with the
-  // "measure" strategy, which keeps every bar in the buffer. Bars with no
-  // length are not drawn, so test components do a little work (work(0.3)).
   import { configure, getConfig, definePerf, instrumentAll, instrumentElement, emit, assignTrackGroup } from "/dist/index.js";
   import { trackLitUpdates } from "/dist/adapters/lit.js";
   import { LitElement, html } from "lit";
@@ -52,6 +47,7 @@
   }).observe({ type: "measure" });
 
   const frame = () => new Promise((r) => setTimeout(r, 30));
+  // Bars with no length are left undrawn, so test components do a little work.
   const work = (ms) => { const end = performance.now() + ms; while (performance.now() < end) {} };
   async function collect(fn) {
     await frame();
@@ -64,13 +60,10 @@
   const names = (list) => list.map((b) => b.name);
 
   const scenarios = {
-    // ---- Drawing ---------------------------------------------------------
-
     async autoStrategyLeavesBufferAlone() {
       configure({ strategy: "auto" });
       performance.measure("auto-el", { start: 0, end: 1 });
       const before = performance.getEntriesByType("measure").length;
-      // One bar with details (measure, then cleared) and one without (timeStamp).
       emit("auto-el", performance.now() - 2, performance.now(), { track: "Components", properties: [["k", "v"]] });
       emit("auto-el", performance.now() - 2, performance.now(), { track: "Components" });
       const after = performance.getEntriesByType("measure").length;
@@ -87,8 +80,6 @@
       configure({ strategy: "measure" });
       return after - before;
     },
-
-    // ---- Lifecycle callbacks -------------------------------------------
 
     async lifecycleOnComponentsTrack() {
       class LcEl extends HTMLElement { connectedCallback() { work(1); } disconnectedCallback() { work(1); } }
@@ -118,8 +109,6 @@
     },
 
     async shortCallbacksHidden() {
-      // Browsers round timestamps to 0.1 ms, so use a cut-off well above that.
-      // Generous, so the empty callback stays under it on a slow machine.
       configure({ minDuration: 2 });
       class Quick extends HTMLElement { connectedCallback() {} }
       class Slow extends HTMLElement { connectedCallback() { work(4); } }
@@ -183,8 +172,6 @@
       return warnings.length;
     },
 
-    // ---- Lit -----------------------------------------------------------
-
     async litFirstUpdate() {
       class LitFirst extends LitElement {
         static properties = { v: { type: Number } };
@@ -194,7 +181,7 @@
       }
       customElements.define("lit-first", LitFirst);
       const el = new LitFirst();
-      await new Promise((r) => setTimeout(r, 200)); // created, then connected later
+      await new Promise((r) => setTimeout(r, 200));
       const got = await collect(async () => { document.body.append(el); await el.updateComplete; });
       const components = on("Components", got);
       const mount = components.find((b) => b.name === "Mount");
@@ -245,7 +232,7 @@
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; trackLitUpdates(this); }
         render() { work(0.3); return html`<button @click=${this.onClick}>${this.v}</button>`; }
-        onClick() { work(3); this.v++; work(8); } // busy before and after the change
+        onClick() { work(3); this.v++; work(8); }
       }
       customElements.define("lit-e", LitE);
       const el = new LitE();
@@ -290,7 +277,7 @@
         static properties = { v: { type: Number }, doubled: { type: Number } };
         constructor() { super(); this.v = 0; this.doubled = 0; trackLitUpdates(this); }
         render() { work(0.3); return html`${this.doubled}`; }
-        updated(changed) { if (changed.has("v")) this.doubled = this.v * 2; } // the mistake Lit warns about
+        updated(changed) { if (changed.has("v")) this.doubled = this.v * 2; }
       }
       customElements.define("lit-cascade", LitCascade);
       const el = new LitCascade();
@@ -326,14 +313,10 @@
       out.push(...await collect(async () => { el.skip = true; el.v++; el.v++; await el.updateComplete; el.skip = false; }));
       out.push(...await collect(async () => { el.fail = true; el.v++; try { await el.updateComplete; } catch {} }));
       out.push(...await collect(async () => { el.v++; await el.updateComplete; }));
-      // Leave out effects bars: under load, the empty updated() can take long
-      // enough to get one.
       return on("Components", out)
         .filter((b) => !b.color.startsWith("secondary"))
         .map((b) => [b.name, b.color, b.props["Changes batched"] ?? "1", b.props.Error ?? null]);
     },
-
-    // ---- Fixes from review ----------------------------------------------
 
     async badValuesDoNotBreakUpdates() {
       class LitBad extends LitElement {
@@ -396,10 +379,7 @@
         render() { work(0.3); return html`${this.v}`; }
       }
       class LitLater extends LitX {
-        // Defers its updates, like an element that waits for the next frame.
-        // A fixed delay rather than requestAnimationFrame: a frame can arrive
-        // so soon after lit-x's update that the wait between them is too
-        // short to draw, which made this test fail now and then.
+        // A fixed delay: requestAnimationFrame can fire too soon after lit-x for a wait bar to have any length.
         scheduleUpdate() { return new Promise((r) => setTimeout(r, 20)).then(() => super.scheduleUpdate()); }
       }
       customElements.define("lit-x", LitX);
@@ -460,8 +440,6 @@
       try { definePerf("notvalid", BadName); } catch (e) { threw = e.name; }
       return { threw, untouched: BadName.prototype.connectedCallback === before, canRetry: (() => { definePerf("now-valid", BadName); return true; })() };
     },
-
-    // ---- Gaps found by coverage -----------------------------------------
 
     async productionVersionWorks() {
       const prod = await import("/dist/production/index.js");
@@ -547,7 +525,7 @@
       const el = new LitGone();
       const got = await collect(async () => {
         document.body.append(el);
-        el.remove(); // before Lit's first update runs
+        el.remove();
         await el.updateComplete;
         await new Promise((r) => setTimeout(r, 200));
         document.body.append(el);
@@ -647,13 +625,11 @@
       customElements.define("off-lit", OffLit);
       const el = new OffLit();
       const litUntouched = !Object.prototype.hasOwnProperty.call(el, "requestUpdate");
-      configure({ enabled: undefined }); // ignored, so still off
+      configure({ enabled: undefined });
       const stillOff = getConfig().enabled === false;
       configure({ enabled: true });
       return { untouched: Off.prototype.connectedCallback === before, litUntouched, stillOff };
     },
-
-    // ---- Edge cases ------------------------------------------------------
 
     async alreadyInstrumentedClassWithBadName() {
       class Twice extends HTMLElement { connectedCallback() {} }
@@ -665,7 +641,6 @@
     },
 
     async noGetName() {
-      // Browsers before customElements.getName() fall back to the tag name.
       customElements.getName = undefined;
       try {
         class OldBrowser extends HTMLElement { connectedCallback() { work(0.5); } }
@@ -678,19 +653,16 @@
 
     async instrumentAllEdgeCases() {
       const out = {};
-      // A hook that throws never stops the element being defined.
       let stop = instrumentAll({ onDefine() { throw new Error("hook broke"); } });
       class HookBroke extends HTMLElement { connectedCallback() { work(0.5); } }
       const got = await collect(() => { customElements.define("hook-broke", HookBroke); document.body.append(new HookBroke()); });
       out.defined = customElements.get("hook-broke") === HookBroke;
       out.bars = names(on("Components", got));
-      // Called on something other than the registry: passed straight to the browser.
       try { customElements.define.call({}, "not-registry", class extends HTMLElement {}); } catch (e) { out.otherThis = e.name; }
       stop();
-      stop(); // a second call does nothing
+      stop();
       out.restoredAfterTwoStops = !Object.prototype.hasOwnProperty.call(customElements, "define");
 
-      // Something else wrapped define afterwards: leave their wrapper alone.
       stop = instrumentAll();
       const theirs = function define(...args) { return CustomElementRegistry.prototype.define.apply(this, args); };
       customElements.define = theirs;
@@ -698,7 +670,6 @@
       out.keptOtherWrapper = customElements.define === theirs;
       delete customElements.define;
 
-      // define was already an own property: put that back.
       const own = function define(...args) { return CustomElementRegistry.prototype.define.apply(this, args); };
       customElements.define = own;
       stop = instrumentAll();
@@ -732,15 +703,12 @@
     },
 
     async composedEventSeenOnce() {
-      // A composed "change" event is heard by each shadow root it passes
-      // through. It is still one event.
       class LitInput extends LitElement {
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; trackLitUpdates(this); }
         render() { work(0.3); return html`<span @change=${() => { work(1); this.v++; }}>${this.v}</span>`; }
       }
       customElements.define("lit-input", LitInput);
-      // Inside another tracked element, so the event passes two shadow roots.
       class LitInputBox extends LitElement {
         constructor() { super(); trackLitUpdates(this); }
         render() { return html`<lit-input></lit-input>`; }
@@ -787,10 +755,7 @@
       document.body.append(el);
       await el.updateComplete;
       await frame();
-      // Lit 3's standard decorators pass the new value in, rather than
-      // leaving it to be read from the element.
       const got = await collect(async () => { el.requestUpdate("v", 0, undefined, true, 0); el.requestUpdate("v", 0, undefined, true, 7); await el.updateComplete; });
-      // A property that cannot be read: the element's own error comes through.
       let error = null;
       try { el.requestUpdate("broken", 1); } catch (e) { error = e.message; }
       await el.updateComplete;
@@ -811,7 +776,6 @@
       const second = await collect(async () => { el.v++; await el.updateComplete; });
       return {
         rendered: el.renderRoot.textContent.trim(),
-        // Leave out effects bars, which appear under load.
         first: names(on("Components", first).filter((b) => !b.color.startsWith("secondary"))),
         second: names(on("Components", second).filter((b) => !b.color.startsWith("secondary"))).filter((n) => n === "lit-late"),
       };
@@ -822,8 +786,6 @@
         static properties = { v: { type: Number } };
         constructor() { super(); this.v = 0; trackLitUpdates(this); }
         render() { work(0.3); return html`${this.v}`; }
-        // Break the clock after the element's own work, so only the
-        // tracking that runs afterwards sees it.
         updated() { if (this.breakClock) performance.now = () => { throw new Error("no clock"); }; }
       }
       customElements.define("lit-clock-breaks", LitClockBreaks);
@@ -884,10 +846,7 @@
       };
     },
 
-    // ---- Track groups ----------------------------------------------------
-
     async trackGroupsByPrefixAndClass() {
-      // A design system's base class, never defined itself.
       class AcmeElement extends LitElement {}
       const undoClass = assignTrackGroup(AcmeElement, "Acme");
       const undoPrefix = assignTrackGroup("beta-", "Beta");
@@ -897,11 +856,9 @@
         connectedCallback() { super.connectedCallback(); work(0.3); }
         render() { work(0.3); return html`${this.v}`; }
       }
-      // Matches both rules: the class rule wins.
       class BetaAcme extends AcmeElement { connectedCallback() { super.connectedCallback(); work(0.3); } }
       class BetaTip extends HTMLElement { connectedCallback() { work(0.3); } }
       class AppPage extends HTMLElement { connectedCallback() { work(0.3); } }
-      // In the page before they are defined, so each define has upgrades to time.
       const tags = ["ds-card", "beta-acme", "beta-tip", "app-page"];
       document.body.append(...tags.map((t) => document.createElement(t)));
       const card = document.querySelector("ds-card");
@@ -914,7 +871,6 @@
       });
       undoClass();
       undoPrefix();
-      // Rules are looked up each time, so removing them takes effect at once.
       const after = await collect(async () => { card.v++; await card.updateComplete; });
       const groups = {};
       for (const b of got) (groups[`${b.track}: ${b.name}`] ??= new Set()).add(b.group);

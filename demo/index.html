@@ -86,15 +86,12 @@
   import { trackLitUpdates } from "../dist/adapters/lit.js";
   import { LitElement, html } from "lit";
 
-  // ?strategy=timestamp or ?strategy=measure to try the other drawing modes.
   const strategy = new URLSearchParams(location.search).get("strategy");
   if (strategy === "timestamp" || strategy === "measure") configure({ strategy });
 
   const stage = document.getElementById("stage");
-  // Busy-wait so the bars are wide enough to spot.
   function work(ms) { const end = performance.now() + ms; while (performance.now() < end) {} }
 
-  // --- Plain custom element ---------------------------------------------
   class DemoCard extends HTMLElement {
     static observedAttributes = ["label"];
     connectedCallback() { work(2); this.textContent = this.getAttribute("label") ?? "card"; }
@@ -121,7 +118,6 @@
   };
   document.getElementById("v-remove").onclick = () => stage.querySelectorAll("demo-card").forEach((el) => el.remove());
 
-  // --- Lit elements -----------------------------------------------------
   class DemoBadge extends LitElement {
     static properties = { value: { type: Number } };
     constructor() { super(); this.value = 0; trackLitUpdates(this); }
@@ -135,7 +131,7 @@
       super();
       this.count = 0;
       this.doubled = 0;
-      this.slow = false; // plain fields, so changing them causes no update
+      this.slow = false;
       this.cascade = false;
       trackLitUpdates(this);
     }
@@ -147,8 +143,6 @@
     }
     updated(changed) {
       work(1);
-      // The mistake Lit warns about: deriving state in updated() causes a
-      // second update. willUpdate() is the right place for this.
       if (this.cascade && changed.has("count")) {
         this.cascade = false;
         this.doubled = this.count * 2;
@@ -159,16 +153,11 @@
   const counter = document.createElement("demo-counter");
   stage.append(counter);
 
-  // Each handler does a little work first, so "Event: click" is easy to see.
   document.getElementById("l-one").onclick = () => { work(1); counter.count++; };
   document.getElementById("l-five").onclick = () => { work(1); for (let i = 0; i < 5; i++) counter.count++; };
   document.getElementById("l-heavy").onclick = () => { work(1); counter.slow = true; counter.count++; };
   document.getElementById("l-cascade").onclick = () => { work(1); counter.cascade = true; counter.count++; };
 
-  // --- Stencil (simulated) ----------------------------------------------
-  // Writes measures in the same format and order as a Stencil dev or
-  // --profile build: update() wraps render() (which includes patching the
-  // page), then postUpdate() runs the componentDidUpdate hooks.
   observeStencilProfile();
   const tag = "fake-stencil-widget";
   const measure = (fn, start) => performance.measure(`[Stencil] ${fn}() <${tag}>`, { start, end: performance.now() });

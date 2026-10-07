@@ -1,7 +1,3 @@
-// Builds a tiny app that uses every entry point, with real Vite, webpack and
-// esbuild, and checks what ends up in the output:
-// - production builds must contain none of the instrumentation code;
-// - development builds must contain it (so the check above means something).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,7 +7,6 @@ import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// Strings that only exist in the real (development) code.
 const MARKERS = ["track-entry", "Elements upgraded", "Changes batched", "Cascading Update", "PerformanceObserver"];
 
 const APP = `
@@ -26,8 +21,6 @@ observeStencilProfile();
 window.track = trackLitUpdates;
 `;
 
-// An app that only uses the one-line setup. The import has no bindings, so
-// bundlers keep it only because the package marks it as having side effects.
 const REGISTER_APP = `
 import "tuppence/register";
 customElements.define("my-card", class extends HTMLElement {});
@@ -37,7 +30,6 @@ let dir;
 before(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "cept-bundle-"));
   fs.mkdirSync(path.join(dir, "node_modules"));
-  // Install this package the way npm would link it.
   fs.symlinkSync(repo, path.join(dir, "node_modules", "tuppence"), "dir");
   fs.writeFileSync(path.join(dir, "app.js"), APP);
   fs.writeFileSync(path.join(dir, "register.js"), REGISTER_APP);
@@ -54,7 +46,6 @@ function readAll(outDir) {
 
 function check(code, mode) {
   const found = MARKERS.filter((m) => code.includes(m));
-  // Either way the element must still be defined.
   assert.match(code, /customElements\.define/);
   if (mode === "production") assert.deepEqual(found, [], `production build contains: ${found}`);
   else assert.deepEqual(found, MARKERS, "development build should contain the real code");
@@ -114,8 +105,6 @@ test("Vite production build contains none of the library", async () => {
 
 test("Vite dev server uses the real code", async () => {
   const { createServer } = await import("vite");
-  // An earlier `vite build` in this process sets NODE_ENV=production, which
-  // Vite reads when choosing conditions. A fresh dev session has it unset.
   const savedEnv = process.env.NODE_ENV;
   delete process.env.NODE_ENV;
   const server = await createServer({
@@ -137,7 +126,6 @@ test("Vite dev server uses the real code", async () => {
     }
   } finally {
     await server.close();
-    // Put it back so later builds in this process are not affected.
     if (savedEnv !== undefined) process.env.NODE_ENV = savedEnv;
   }
 });
@@ -158,7 +146,6 @@ test("esbuild without the flag keeps the real code (documented)", async () => {
   check(await esbuild([]), "development");
 });
 
-// Strings from the Lit adapter and core that the one-line setup pulls in.
 const REGISTER_MARKERS = ["Cascading Update", "Elements upgraded", "addInitializer"];
 
 function checkRegister(code, mode) {

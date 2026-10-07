@@ -1,4 +1,3 @@
-// Runs in a real Chrome/Chromium. Set CHROME_PATH if it is not found.
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { serve, findChrome, launch } from "./browser/harness.mjs";
@@ -8,7 +7,6 @@ const skip = chrome ? false : "no Chrome found; set CHROME_PATH to run browser t
 
 const NB = "\u00a0";
 
-// The whole suite runs against Lit 3 and Lit 2.
 for (const lit of ["3", "2"]) {
   describe(`Lit ${lit}`, () => {
     let server, browser, results;
@@ -23,7 +21,6 @@ for (const lit of ["3", "2"]) {
       await page.goto(`${server.origin}/test/browser/scenarios.html?lit=${lit}`);
       await page.waitForFunction("window.__results", { timeout: 30000 });
       results = await page.evaluate("window.__results");
-      // The skipped/failed Lit scenario breaks a render on purpose.
       assert.deepEqual(errors.filter((m) => !m.startsWith("render broke")), [], "page errors");
     });
 
@@ -53,15 +50,11 @@ for (const lit of ["3", "2"]) {
       const wasted = (same) => ({ color: "warning", wasted: "no property's contents changed", same });
       assert.deepEqual(r.newArray, wasted("items"));
       assert.deepEqual(r.newNested, wasted("options, when"));
-      // Another property really changed, so the render was needed, but the
-      // new-object property is still named.
       assert.equal(r.mixed.wasted, null);
       assert.equal(r.mixed.same, "items");
       assert.notEqual(r.mixed.color, "warning");
       assert.deepEqual([r.realChange.wasted, r.realChange.same], [null, null]);
-      // Class instances are only the same if they are the very same object.
       assert.deepEqual([r.classInstances.wasted, r.classInstances.same], [null, null]);
-      // A bare requestUpdate() asked for the render, so it is not wasted.
       assert.equal(r.withRequestUpdate.wasted, null);
       assert.equal(r.withRequestUpdate.same, "items");
     });
@@ -131,19 +124,15 @@ for (const lit of ["3", "2"]) {
 
     test("Lit first update: Update, Render, Commit, wrapped in Mount, no Changed Props", { skip }, () => {
       const r = result("litFirstUpdate");
-      // The wait bar is "Update", or "Update Blocked" on a slow machine.
       assert.deepEqual(r.scheduler.filter((n) => !n.startsWith("Update")), ["Render", "Commit"]);
       assert.deepEqual(r.components, ["Mount", "lit-first", "lit-first"]);
       assert.ok(r.mountWrapsAll);
-      // Counted from creation instead, the wait would be at least 200 ms.
       assert.ok(r.updateWait < 100, `wait counts from connection, got ${r.updateWait}`);
       assert.equal(r.changedPropsOnFirst, false);
     });
 
     test("Lit: Render covers willUpdate and render, Commit covers updated, Changed Props diff", { skip }, () => {
       const r = result("litPhasesAndChangedProps");
-      // The wait bar is drawn only when long enough to measure, and is
-      // "Update Blocked" on a slow machine.
       assert.deepEqual(r.scheduler.filter((n) => !n.startsWith("Update")), ["Render", "Commit"]);
       assert.ok(r.renderBeforeCommit);
       assert.ok(r.renderMs >= 7.5, `render ${r.renderMs}`);
@@ -156,13 +145,11 @@ for (const lit of ["3", "2"]) {
         [`-${NB}a`, "0"],
         [`+${NB}a`, "5"],
       ]);
-      // Two no-op sets are ignored; the bare requestUpdate() is what caused it.
       assert.deepEqual(r.noopRows, [["Update requested", "requestUpdate()"]]);
     });
 
     test("Lit: 'Event: click' and 'Update Blocked' when the handler keeps working", { skip }, () => {
       const r = result("litUpdateBlockedAndEvent");
-      // Commit is drawn only when the DOM write is long enough to measure.
       assert.deepEqual(r.scheduler.filter((n) => n !== "Commit"), ["Event: click", "Update Blocked", "Render"]);
       assert.ok(r.eventMs >= 2.5, `event ${r.eventMs}`);
       assert.deepEqual(r.updateRows, [
@@ -173,7 +160,6 @@ for (const lit of ["3", "2"]) {
 
     test("Lit: a child updated by its parent shows 'Triggered by', with no extra Update bar", { skip }, () => {
       const r = result("litTriggeredByParent");
-      // At most the parent's Update bar (left out when too short to measure).
       assert.ok(r.scheduler.filter((n) => n.startsWith("Update")).length <= 1, r.scheduler.join());
       assert.deepEqual(r.childRows, [
         ["Triggered by", "lit-parent"],
@@ -196,8 +182,6 @@ for (const lit of ["3", "2"]) {
 
     test("Lit: skipped and failed updates are shown and do not leak into the next", { skip }, () => {
       const r = result("litSkippedAndFailed");
-      // The last render is an ordinary one: its shade of blue depends on how
-      // fast the machine is, so only check it isn't red.
       const [name, color, ...rest] = r[2];
       assert.ok(color.startsWith("primary"), color);
       assert.deepEqual([...r.slice(0, 2), [name, "primary", ...rest]], [
@@ -292,7 +276,6 @@ for (const lit of ["3", "2"]) {
     });
 
     test("requestUpdate: passed-in new values are counted, unreadable properties pass Lit's error through", { skip }, () => {
-      // Lit 2 ignores the extra arguments, so it sees no change and does not update.
       assert.deepEqual(
         result("requestUpdateEdgeCases"),
         lit === "3"
@@ -340,7 +323,6 @@ for (const lit of ["3", "2"]) {
     test("Lit: an element removed before its first update never gets a misleading wait", { skip }, () => {
       const r = result("removedBeforeFirstUpdate");
       assert.equal(r.rendered, "1");
-      // Counted from the first connection instead, it would be at least 200 ms.
       assert.ok(r.longestUpdateWait < 100, `wait ${r.longestUpdateWait}`);
     });
 
@@ -368,8 +350,6 @@ for (const lit of ["3", "2"]) {
     });
 
     test("instrumentAll instruments new definitions until every caller stops it", { skip }, () => {
-      // A define with nothing to upgrade takes no measurable time, so only
-      // the connected bars are reliable here.
       const r = result("instrumentAllCanBeStopped");
       const connected = (list) => list.filter((n) => n.endsWith("connected"));
       assert.deepEqual(connected(r.during), ["all-one connected"]);
@@ -384,7 +364,6 @@ for (const lit of ["3", "2"]) {
   });
 }
 
-// The one-line setup, on its own page because it changes customElements.define.
 for (const lit of ["3", "2"]) {
   describe(`tuppence/register, Lit ${lit}`, () => {
     let server, browser, results;
@@ -438,7 +417,7 @@ for (const lit of ["3", "2"]) {
 
     test("definePerf still works, without doubling bars", { skip }, () => {
       const r = result("definePerfIsNotDoubled");
-      assert.ok(r.upgrade.length <= 1, r.upgrade.join()); // no length when nothing upgrades
+      assert.ok(r.upgrade.length <= 1, r.upgrade.join());
       assert.deepEqual(r.components, ["auto-explicit connected"]);
     });
 
@@ -475,7 +454,6 @@ describe("Vue custom elements (defineCustomElement)", () => {
     assert.deepEqual(r.value.upgrade, ["vue-counter define", "2", "Vue Design System"]);
     assert.deepEqual(r.value.rendered, ["1:0", "2:0", "3:1"], "Vue renders and handles clicks as usual");
     assert.deepEqual(r.value.groups, ["Vue Design System"]);
-    // Element-level bars only: Lit's update tracking needs Lit.
     assert.ok(!r.value.tracks.includes("Scheduler"), r.value.tracks.join());
     assert.ok(r.value.tracks.includes("Components"), r.value.tracks.join());
   });

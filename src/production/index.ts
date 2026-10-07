@@ -1,11 +1,3 @@
-/**
- * The production build of this package: the same API, doing nothing.
- *
- * Bundlers that read the "production" export condition (Vite and webpack do
- * by default in production builds) load this file instead of the real one,
- * so none of the instrumentation code reaches users. `definePerf` still
- * defines the element.
- */
 import type {
   Config,
   InstrumentAllOptions,

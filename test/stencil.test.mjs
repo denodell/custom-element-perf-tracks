@@ -1,7 +1,3 @@
-// Builds a small real Stencil app (test/stencil-app) in dev mode, records it
-// in headless Chrome, and reads the trace with DevTools' own trace engine to
-// check that observeStencilProfile turns Stencil's real timings into the
-// expected bars. Set CHROME_PATH if Chrome is not found.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -76,8 +72,6 @@ test("real Stencil timings become React-style bars", { skip, timeout: 180000 }, 
   const names = (t) => (tracks[t] ?? []).map((e) => e.name.replace(/^​/, ""));
   const count = (t, n) => names(t).filter((x) => x === n).length;
 
-  // This test has failed rarely on a busy machine without a clear cause, so
-  // any failure reports everything that was drawn.
   try {
     checkBars(tracks, names, count, data);
   } catch (error) {
@@ -92,16 +86,12 @@ test("real Stencil timings become React-style bars", { skip, timeout: 180000 }, 
 });
 
 function checkBars(tracks, names, count, data) {
-
-  // First load plus two clicks: each element updates three times.
   assert.equal(count("Scheduler", "Render and Commit"), 6, names("Scheduler").join());
   assert.ok(count("Components", "my-counter") >= 3 + 2, "renders, and componentDidUpdate after each click");
   assert.ok(count("Components", "my-badge") >= 3);
   assert.ok(names("Components").includes("my-counter connected"));
   assert.ok(names("Components").includes("my-badge connected"));
   assert.ok(names("Components").includes("my-counter scheduleUpdate"), "componentWillUpdate work is drawn");
-  // Stencil records scheduleUpdate for every update; ones shorter than
-  // minDuration are hidden. (How many that is depends on machine load.)
   const scheduled = tracks.Components.filter((e) => e.name.endsWith("scheduleUpdate"));
   assert.ok(scheduled.every((e) => e.dur >= 50), "every drawn one is at least minDuration (0.05 ms)");
   assert.deepEqual(names("Upgrade").filter((n) => n.endsWith("createInstance")).sort(), [
@@ -109,8 +99,6 @@ function checkBars(tracks, names, count, data) {
     "my-counter createInstance",
   ]);
 
-  // Stencil loads each component's code lazily: the app load, then a module
-  // per component, on the Loading track.
   const loads = Object.entries(tracks)
     .filter(([t]) => t.startsWith("Loading"))
     .flatMap(([, es]) => es.map((e) => e.name.replace(/^\u200b/, "")));
@@ -118,8 +106,6 @@ function checkBars(tracks, names, count, data) {
   assert.ok(loads.includes("my-badge"), `loads: ${loads}`);
   assert.ok(loads.some((n) => /initial load \(by /.test(n)), `loads: ${loads}`);
 
-  // The badge is connected while the counter renders, so its bar nests inside.
   const badgeConnected = tracks.Components.find((e) => e.name.replace(/^​/, "") === "my-badge connected");
   assert.equal(data.entryToNode.get(badgeConnected)?.parent?.entry?.name.replace(/^​/, ""), "my-counter");
-
 }

@@ -1,6 +1,3 @@
-// Turns each failing test in node --test output into a GitHub error
-// annotation, so failures show on the pull request page without opening
-// the full log. Usage: node .github/annotate-test-failures.mjs test-output.log
 import fs from "node:fs";
 
 const lines = fs.readFileSync(process.argv[2], "utf8").split("\n");
@@ -10,12 +7,10 @@ for (let i = 0; i < lines.length; i++) {
   if (!m) continue;
   const indent = m[1].length;
   const block = [];
-  // The YAML block after "not ok" ends at a line of "..." at the same depth.
   for (let j = i + 1; j < lines.length && block.length < 40; j++) {
     if (lines[j].trim() === "..." && lines[j].indexOf("...") <= indent + 2) break;
     block.push(lines[j].slice(indent));
   }
-  // A suite fails when one of its tests fails; report only the tests.
   if (block.some((l) => l.includes("subtestsFailed"))) continue;
   failures.push({ name: m[2], block });
 }
