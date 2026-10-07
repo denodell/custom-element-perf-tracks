@@ -55,7 +55,7 @@ type Host = ReactiveElement & Protected;
 /** Lit's default change check. */
 const notEqual = (value: unknown, old: unknown) => !Object.is(value, old);
 
-const TRACKED = Symbol.for("custom-element-perf-tracks.lit");
+const TRACKED = Symbol.for("tuppence.lit");
 
 /** Stands in for a property value whose getter threw. */
 const UNREADABLE = Symbol("unreadable");
@@ -544,7 +544,7 @@ export function trackLitUpdates(host: ReactiveElement): void {
  * Track every Lit element defined from now on, with no change to their code.
  * Also instruments every other custom element, like `instrumentAll`. It has
  * to run before the app's components load; importing
- * `custom-element-perf-tracks/register` first does this.
+ * `tuppence/register` first does this.
  *
  * Returns a function that stops tracking newly defined elements.
  */

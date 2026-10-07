@@ -396,8 +396,11 @@
         render() { work(0.3); return html`${this.v}`; }
       }
       class LitLater extends LitX {
-        // Updates a frame later, like an element that defers its updates.
-        scheduleUpdate() { return new Promise((r) => requestAnimationFrame(r)).then(() => super.scheduleUpdate()); }
+        // Defers its updates, like an element that waits for the next frame.
+        // A fixed delay rather than requestAnimationFrame: a frame can arrive
+        // so soon after lit-x's update that the wait between them is too
+        // short to draw, which made this test fail now and then.
+        scheduleUpdate() { return new Promise((r) => setTimeout(r, 20)).then(() => super.scheduleUpdate()); }
       }
       customElements.define("lit-x", LitX);
       customElements.define("lit-later", LitLater);

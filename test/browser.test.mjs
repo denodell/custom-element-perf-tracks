@@ -367,7 +367,7 @@ for (const lit of ["3", "2"]) {
 
 // The one-line setup, on its own page because it changes customElements.define.
 for (const lit of ["3", "2"]) {
-  describe(`custom-element-perf-tracks/register, Lit ${lit}`, () => {
+  describe(`tuppence/register, Lit ${lit}`, () => {
     let server, browser, results;
 
     before(async () => {
