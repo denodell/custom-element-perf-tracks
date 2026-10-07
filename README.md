@@ -1,6 +1,6 @@
-# custom-element-perf-tracks
+# Tuppence
 
-Shows your web components in the Chrome DevTools Performance panel, the same way React shows its components.
+Find out which web component did it. Tuppence shows your web components in the Chrome DevTools Performance panel, the same way React shows its components.
 
 React 19.2 added [performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks) to the Performance panel, so React developers can see what caused each update, how long each step took, and which components did the work. This library adds the same tracks for custom elements, Lit and Stencil, with the same names and colors.
 
@@ -9,7 +9,7 @@ React 19.2 added [performance tracks](https://react.dev/reference/dev-tools/reac
 ## Install
 
 ```sh
-npm install custom-element-perf-tracks
+npm install tuppence
 ```
 
 ## Quick start
@@ -17,7 +17,7 @@ npm install custom-element-perf-tracks
 Add this as the first import in your app's entry file, before any components load:
 
 ```js
-import "custom-element-perf-tracks/register";
+import "tuppence/register";
 ```
 
 Every custom element defined after that is tracked, and Lit elements also get their updates tracked, with no other changes to your code. Record a profile in the Performance panel and a **Web Components** group appears.
@@ -57,8 +57,8 @@ Bars get darker as work gets slower, using React's thresholds. Anything that thr
 The quick start covers most apps. To instrument only some elements instead:
 
 ```js
-import { definePerf } from "custom-element-perf-tracks";
-import { trackLitUpdates } from "custom-element-perf-tracks/lit";
+import { definePerf } from "tuppence";
+import { trackLitUpdates } from "tuppence/lit";
 
 // Instead of customElements.define:
 definePerf("my-card", MyCard);
@@ -79,19 +79,23 @@ class MyCounter extends LitElement {
 Stencil records its own timings in dev builds, and in builds made with `stencil build --profile`. One call at startup shows them on the same tracks:
 
 ```js
-import { observeStencilProfile } from "custom-element-perf-tracks/stencil";
+import { observeStencilProfile } from "tuppence/stencil";
 
 observeStencilProfile();
 ```
 
 Stencil's timing for `render()` includes patching the page, so each update is one **Render and Commit** bar. A **Loading** track shows the app starting and each component's code being loaded, with extra rows when loads overlap.
 
+## Other libraries
+
+Any custom element gets the **Upgrade** bars and the lifecycle bars on **Components** from the one-line setup, whatever built it. That includes Vue components packaged with `defineCustomElement`. The **Scheduler** track and the per-update bars with **Changed Props** need a hook into the library's own update cycle, so they cover Lit and Stencil only.
+
 ## Design systems
 
 By default every element's bars go in one **Web Components** group. A design system can put its own elements in a group of their own, so its work shows up separately from the app's, and from any other library on the page:
 
 ```js
-import { assignTrackGroup } from "custom-element-perf-tracks";
+import { assignTrackGroup } from "tuppence";
 
 // Every element that extends the design system's base class.
 assignTrackGroup(AcmeElement, "Acme Design System");
@@ -122,7 +126,7 @@ Vite and webpack decide from `NODE_ENV`, so a dev server started with `NODE_ENV=
 ## Settings
 
 ```js
-import { configure } from "custom-element-perf-tracks";
+import { configure } from "tuppence";
 
 configure({
   trackGroup: "My App",   // rename the group in DevTools

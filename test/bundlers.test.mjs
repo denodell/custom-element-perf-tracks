@@ -15,9 +15,9 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MARKERS = ["track-entry", "Elements upgraded", "Changes batched", "Cascading Update", "PerformanceObserver"];
 
 const APP = `
-import { definePerf, configure } from "custom-element-perf-tracks";
-import { trackLitUpdates } from "custom-element-perf-tracks/lit";
-import { observeStencilProfile } from "custom-element-perf-tracks/stencil";
+import { definePerf, configure } from "tuppence";
+import { trackLitUpdates } from "tuppence/lit";
+import { observeStencilProfile } from "tuppence/stencil";
 
 configure({ trackGroup: "My App" });
 class MyCard extends HTMLElement {}
@@ -29,7 +29,7 @@ window.track = trackLitUpdates;
 // An app that only uses the one-line setup. The import has no bindings, so
 // bundlers keep it only because the package marks it as having side effects.
 const REGISTER_APP = `
-import "custom-element-perf-tracks/register";
+import "tuppence/register";
 customElements.define("my-card", class extends HTMLElement {});
 `;
 
@@ -38,7 +38,7 @@ before(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "cept-bundle-"));
   fs.mkdirSync(path.join(dir, "node_modules"));
   // Install this package the way npm would link it.
-  fs.symlinkSync(repo, path.join(dir, "node_modules", "custom-element-perf-tracks"), "dir");
+  fs.symlinkSync(repo, path.join(dir, "node_modules", "tuppence"), "dir");
   fs.writeFileSync(path.join(dir, "app.js"), APP);
   fs.writeFileSync(path.join(dir, "register.js"), REGISTER_APP);
   fs.writeFileSync(path.join(dir, "package.json"), '{"type":"module"}');
@@ -127,10 +127,10 @@ test("Vite dev server uses the real code", async () => {
   try {
     const importer = path.join(dir, "app.js");
     for (const [id, file] of [
-      ["custom-element-perf-tracks", "dist/index.js"],
-      ["custom-element-perf-tracks/lit", "dist/adapters/lit.js"],
-      ["custom-element-perf-tracks/stencil", "dist/adapters/stencil.js"],
-      ["custom-element-perf-tracks/register", "dist/register.js"],
+      ["tuppence", "dist/index.js"],
+      ["tuppence/lit", "dist/adapters/lit.js"],
+      ["tuppence/stencil", "dist/adapters/stencil.js"],
+      ["tuppence/register", "dist/register.js"],
     ]) {
       const resolved = await server.pluginContainer.resolveId(id, importer);
       assert.equal(fs.realpathSync(resolved.id), path.join(repo, file));
