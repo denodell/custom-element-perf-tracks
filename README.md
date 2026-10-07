@@ -41,11 +41,14 @@ None of it reaches production builds. See [Production builds](#production-builds
 | Bar | What it covers |
 | --- | --- |
 | **my-element** (blue) | The element's render. Clicking it shows **Changed Props** with old and new values, how many **Changes batched** into the update, and which parent it was **Triggered by**. |
+| **my-element** (yellow) | A wasted render: every property that changed was given a new array, object or date with the same contents, so the element rendered again with nothing new to show. Clicking it names the properties under **Same contents, new object**. |
 | **my-element** (purple) | The element's `firstUpdated()` and `updated()` work. |
 | **Mount** | Wraps an element's first update. |
 | **my-element connected** | Lifecycle callbacks: `connected`, `disconnected`, `attributeChanged` and `adopted`. |
 
 **Upgrade** shows each `customElements.define` call, which upgrades every matching element already in the page. Clicking it shows how many were upgraded.
+
+Wasted renders usually come from the app, not the component: code like `<my-table .columns=${[...]}>`, or `columns={[...]}` in React, creates a new array on every render. Only arrays, plain objects and dates are compared by contents; anything else counts as unchanged only if it is the very same object. Lit elements only.
 
 Bars get darker as work gets slower, using React's thresholds. Anything that throws gets a red bar with the error message.
 

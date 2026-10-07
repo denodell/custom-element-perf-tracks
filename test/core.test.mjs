@@ -552,3 +552,48 @@ test("the production assignTrackGroup does nothing and returns an undo function"
   assert.equal(typeof undo, "function");
   undo();
 });
+
+// ---- Wasted renders ------------------------------------------------------
+
+import { sameContentsNewObject as same } from "../dist/compare.js";
+
+test("same contents, new object: arrays, plain objects and dates, compared by what's in them", () => {
+  assert.equal(same([1, 2, { a: [3] }], [1, 2, { a: [3] }]), true);
+  assert.equal(same({ a: 1, b: { c: "x" } }, { b: { c: "x" }, a: 1 }), true, "key order does not matter");
+  assert.equal(same(Object.assign(Object.create(null), { a: 1 }), { a: 1 }), true);
+  assert.equal(same(new Date(5), new Date(5)), true);
+  assert.equal(same([NaN], [NaN]), true);
+  assert.equal(same(new Date(NaN), new Date(NaN)), true);
+});
+
+test("same contents, new object: anything it is not sure about counts as different", () => {
+  const shared = [1];
+  assert.equal(same(shared, shared), false, "the same object is not a new one");
+  assert.equal(same([1, 2], [1, 3]), false);
+  assert.equal(same([1, 2], [1, 2, 3]), false);
+  assert.equal(same({ a: 1 }, { a: 1, b: 2 }), false);
+  assert.equal(same({ a: 1 }, { a: 2 }), false);
+  assert.equal(same({ a: 1, b: undefined }, { a: 1, c: undefined }), false);
+  assert.equal(same([1], { 0: 1, length: 1 }), false, "array and object");
+  assert.equal(same([new Date(1)], [new Date(2)]), false);
+  class Thing {}
+  assert.equal(same(new Thing(), new Thing()), false, "class instances");
+  assert.equal(same([new Thing()], [new Thing()]), false);
+  assert.equal(same(new Map(), new Map()), false);
+  assert.equal(same([() => 1], [() => 1]), false, "functions");
+  assert.equal(same(1, 1), false);
+  assert.equal(same(null, {}), false);
+  assert.equal(same("a", "a"), false);
+  assert.equal(same([0], [-0]), false);
+});
+
+test("same contents, new object: gives up on deep, huge or throwing values", () => {
+  const deep = () => ({ a: { b: { c: { d: { e: { f: 1 } } } } } });
+  assert.equal(same(deep(), deep()), false, "too deep");
+  const big = () => Array.from({ length: 2000 }, (_, i) => i);
+  assert.equal(same(big(), big()), false, "too many values");
+  const throwing = () => Object.defineProperty({}, "x", { enumerable: true, get() { throw new Error("no"); } });
+  assert.equal(same(throwing(), throwing()), false);
+  const shallow = () => ({ a: { b: { c: { d: 1 } } } });
+  assert.equal(same(shallow(), shallow()), true, "within the depth limit");
+});
