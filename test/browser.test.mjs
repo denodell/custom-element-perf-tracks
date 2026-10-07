@@ -112,17 +112,20 @@ for (const lit of ["3", "2"]) {
 
     test("Lit first update: Update, Render, Commit, wrapped in Mount, no Changed Props", { skip }, () => {
       const r = result("litFirstUpdate");
-      assert.deepEqual(r.scheduler.filter((n) => n !== "Update"), ["Render", "Commit"]);
+      // The wait bar is "Update", or "Update Blocked" on a slow machine.
+      assert.deepEqual(r.scheduler.filter((n) => !n.startsWith("Update")), ["Render", "Commit"]);
       assert.deepEqual(r.components, ["Mount", "lit-first", "lit-first"]);
       assert.ok(r.mountWrapsAll);
-      assert.ok(r.updateWait < 20, `wait counts from connection, got ${r.updateWait}`);
+      // Counted from creation instead, the wait would be at least 200 ms.
+      assert.ok(r.updateWait < 100, `wait counts from connection, got ${r.updateWait}`);
       assert.equal(r.changedPropsOnFirst, false);
     });
 
     test("Lit: Render covers willUpdate and render, Commit covers updated, Changed Props diff", { skip }, () => {
       const r = result("litPhasesAndChangedProps");
-      // "Update" is drawn only when the wait is long enough to measure.
-      assert.deepEqual(r.scheduler.filter((n) => n !== "Update"), ["Render", "Commit"]);
+      // The wait bar is drawn only when long enough to measure, and is
+      // "Update Blocked" on a slow machine.
+      assert.deepEqual(r.scheduler.filter((n) => !n.startsWith("Update")), ["Render", "Commit"]);
       assert.ok(r.renderBeforeCommit);
       assert.ok(r.renderMs >= 7.5, `render ${r.renderMs}`);
       assert.ok(r.commitMs >= 3.5, `commit ${r.commitMs}`);
@@ -173,10 +176,14 @@ for (const lit of ["3", "2"]) {
     });
 
     test("Lit: skipped and failed updates are shown and do not leak into the next", { skip }, () => {
-      assert.deepEqual(result("litSkippedAndFailed"), [
+      const r = result("litSkippedAndFailed");
+      // The last render is an ordinary one: its shade of blue depends on how
+      // fast the machine is, so only check it isn't red.
+      const [name, color, ...rest] = r[2];
+      assert.ok(color.startsWith("primary"), color);
+      assert.deepEqual([...r.slice(0, 2), [name, "primary", ...rest]], [
         ["lit-c skipped", "primary-light", "2", null],
         ["lit-c", "error", "1", "render broke"],
-        // shouldUpdate and render take about 0.6 ms.
         ["lit-c", "primary", "1", null],
       ]);
     });
@@ -314,7 +321,8 @@ for (const lit of ["3", "2"]) {
     test("Lit: an element removed before its first update never gets a misleading wait", { skip }, () => {
       const r = result("removedBeforeFirstUpdate");
       assert.equal(r.rendered, "1");
-      assert.ok(r.longestUpdateWait < 20, `wait ${r.longestUpdateWait}`);
+      // Counted from the first connection instead, it would be at least 200 ms.
+      assert.ok(r.longestUpdateWait < 100, `wait ${r.longestUpdateWait}`);
     });
 
     test("Lit: a property that throws when read does not break the update", { skip }, () => {
@@ -420,3 +428,36 @@ for (const lit of ["3", "2"]) {
     });
   });
 }
+
+describe("Vue custom elements (defineCustomElement)", () => {
+  let server, browser, results, errors;
+
+  before(async () => {
+    if (skip) return;
+    server = await serve();
+    browser = await launch();
+    const page = await browser.newPage();
+    errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(`${server.origin}/test/browser/vue.html`);
+    await page.waitForFunction("window.__results", { timeout: 30000 });
+    results = await page.evaluate("window.__results");
+  });
+
+  after(async () => {
+    await browser?.close();
+    server?.close();
+  });
+
+  test("get Upgrade and lifecycle bars from the one-line setup, and still work", { skip }, () => {
+    assert.deepEqual(errors, [], "page errors");
+    const r = results.vueElementsGetElementBars;
+    assert.ok(r.ok, r.error);
+    assert.deepEqual(r.value.upgrade, ["vue-counter define", "2", "Vue Design System"]);
+    assert.deepEqual(r.value.rendered, ["1:0", "2:0", "3:1"], "Vue renders and handles clicks as usual");
+    assert.deepEqual(r.value.groups, ["Vue Design System"]);
+    // Element-level bars only: Lit's update tracking needs Lit.
+    assert.ok(!r.value.tracks.includes("Scheduler"), r.value.tracks.join());
+    assert.ok(r.value.tracks.includes("Components"), r.value.tracks.join());
+  });
+});
