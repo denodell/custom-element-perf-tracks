@@ -1,12 +1,10 @@
 # Tuppence
 
-Find out which web component did it. Tuppence shows your web components in the Chrome DevTools Performance panel, the same way React shows its components.
-
-React 19.2 added [performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks) to the Performance panel, so React developers can see what caused each update, how long each step took, and which components did the work. This library adds the same tracks for custom elements, Lit and Stencil, with the same names and colors.
-
-If you build a design system, your components run inside apps other teams build. When one of them is slow, the app team sees anonymous work in the profiler, and when the app passes it a new array or object on every render, your component gets the blame. Tuppence gives your components their own group in DevTools, in every app that uses them, and marks the wasted renders the app causes. See [Design systems](#design-systems).
+See your web components in the Chrome DevTools Performance panel, the way React shows its own components.
 
 ![Chrome DevTools after clicking a Lit button in the demo. Under Web Components, the Scheduler track shows "Event: click" followed by a blue Render bar and a short Commit bar. The Components track below shows a demo-counter bar lined up with Render.](docs/devtools-lit.png)
+
+React 19.2 added [performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks) that show what caused each update, how long it took, and which components did the work. Tuppence adds the same tracks for Lit, Stencil and other custom elements, with the same names and colors. It also points out renders that didn't need to happen.
 
 ## Install
 
@@ -16,19 +14,19 @@ npm install tuppence
 
 ## Quick start
 
-Add this as the first import in your app's entry file, before any components load:
+Import it at the top of your app's entry file, before any components load:
 
 ```js
 import "tuppence/register";
 ```
 
-Every custom element defined after that is tracked, and Lit elements also get their updates tracked. That one import is the only change to your code. Record a profile in the Performance panel and a **Web Components** group appears.
+Record a profile in the Performance panel and you'll see a **Web Components** group with your components in it.
 
-Production builds get an empty version instead. See [Production builds](#production-builds).
+Tuppence is a development tool. Production builds use an empty version of the package, so none of it ships to your users. See [Production builds](#production-builds).
 
 ## Design systems
 
-A design system can turn Tuppence on for all of its components at once, from its own code, so every app that uses those components sees them in DevTools as soon as it records a profile. It takes two calls:
+If you maintain a design system, you can turn Tuppence on from your base class. Every app that uses your components then sees them in DevTools, in a group of their own:
 
 ```js
 import { LitElement } from "lit";
@@ -45,51 +43,65 @@ export class AcmeElement extends LitElement {
 assignTrackGroup(AcmeElement, "Acme Design System");
 ```
 
-Every component that extends `AcmeElement` now shows up under its own **Acme Design System** group in the Performance panel, separate from the app's tracks. When an app re-renders a component by passing it a new array or object with the same contents, that render is drawn in yellow and named as a wasted render, along with the name of the property that got the new value.
+Components that extend `AcmeElement` show up under **Acme Design System**, separate from the app's own tracks.
 
-Tuppence is a development tool and won't end up in your production build. See [Production builds](#production-builds). It also works alongside the app and any other libraries using Tuppence: each `assignTrackGroup` call adds a rule and leaves everyone else's in place, so each library keeps its own group.
-
-`assignTrackGroup` also takes a tag prefix, for components that share a tag prefix instead of a base class:
+You can also match components by tag prefix:
 
 ```js
 assignTrackGroup("acme-", "Acme Design System");
 ```
 
-A class rule covers the class and everything that extends it, and wins over a prefix rule. Among prefixes, the longest match wins. Each group gets its own Scheduler, Components and Upgrade tracks.
+When a component matches both a class and a prefix, the class wins. When it matches more than one prefix, the longest one wins. Rules from different libraries stay separate, so two design systems on the same page each get their own group.
 
-To see it working, `npm run demo:design-system` serves a React app built on a small Lit design system. See [Demo](#demo).
+None of this ends up in the production builds of apps that use your design system.
+
+## Wasted renders
+
+When a Lit component re-renders only because it was given a new array, object or date with the same contents, Tuppence draws that render in yellow and lists the property under **Same contents, new object**.
+
+This usually comes from app code that creates a new value on every render:
+
+```jsx
+// React
+<acme-table columns={[{ key: "name", label: "Name" }]} />
+```
+
+```js
+// Lit
+html`<acme-table .columns=${[{ key: "name", label: "Name" }]}></acme-table>`;
+```
+
+Arrays, plain objects and dates are compared by their contents. Anything else, like a class instance or a `Map`, has to be the same object to count as unchanged.
 
 ## What you see
 
 **Scheduler** shows each update as a row of steps, like React's Scheduler track:
 
-| Bar | What it covers |
+| Bar | What it shows |
 | --- | --- |
-| **Event: click** | The event handler that made the change, up to the change itself. Any user input event works, from clicks to key presses. |
-| **Update** | The wait between the change and Lit starting the update. It becomes **Update Blocked** when the wait is over 5 ms. |
+| **Event: click** | The event handler that caused the update. Key presses and other input show up here too. |
+| **Update** | The time between the change and Lit starting the update. Shown as **Update Blocked** when it's over 5 ms. |
 | **Render** | `shouldUpdate`, `willUpdate` and `render`. |
-| **Commit** | Writing the result to the page, then `firstUpdated` and `updated`. |
-| **Cascading Update** | Red. The element changed its own properties after rendering, usually in `updated()`, so Lit had to update it a second time. |
+| **Commit** | Writing to the DOM, then `firstUpdated` and `updated`. |
+| **Cascading Update** | Red. The component changed its own properties after rendering, usually in `updated()`, so Lit had to update it again. |
 
-**Components** shows which element did the work, like React's Components track:
+**Components** shows which component did the work, like React's Components track:
 
-| Bar | What it covers |
+| Bar | What it shows |
 | --- | --- |
-| **my-element** (blue) | The element's render. Clicking it shows **Changed Props** with old and new values, how many **Changes batched** into the update, and which parent it was **Triggered by**. |
-| **my-element** (yellow) | A wasted render: every property that changed was given a new array, object or date with the same contents, so the element rendered again and showed exactly what it showed before. Clicking it names the properties under **Same contents, new object**. |
-| **my-element** (purple) | The element's `firstUpdated()` and `updated()` work. |
-| **Mount** | Wraps an element's first update. |
+| **my-element** (blue) | The render. Click it to see **Changed Props** with old and new values, how many **Changes batched** into the update, and which parent it was **Triggered by**. |
+| **my-element** (yellow) | A [wasted render](#wasted-renders). |
+| **my-element** (purple) | `firstUpdated()` and `updated()`. |
+| **Mount** | A component's first update. |
 | **my-element connected** | Lifecycle callbacks: `connected`, `disconnected`, `attributeChanged` and `adopted`. |
 
-**Upgrade** shows each `customElements.define` call, which upgrades every matching element already in the page. Clicking it shows how many were upgraded.
+**Upgrade** shows each `customElements.define` call. Click it to see how many elements already on the page it upgraded.
 
-Wasted renders usually start in the app's code: `<my-table .columns=${[...]}>`, or `columns={[...]}` in React, creates a new array on every render. Only arrays, plain objects and dates are compared by contents; anything else counts as the same only when it's the identical object. This works for Lit elements only.
+Bars get darker the longer they take, using React's thresholds. Errors show as red bars with the error message.
 
-Bars get darker as work gets slower, using React's thresholds. Anything that throws gets a red bar with the error message.
+## Tracking specific elements
 
-## Instrumenting specific elements
-
-The quick start covers most apps. To instrument only some elements instead:
+If you'd rather not track everything, skip the one-line setup and use these instead:
 
 ```js
 import { definePerf } from "tuppence";
@@ -107,11 +119,11 @@ class MyCounter extends LitElement {
 }
 ```
 
-`instrumentElement(MyCard)` adds the lifecycle bars and leaves defining the element to you. It has to run before the class is defined.
+`instrumentElement(MyCard)` adds the lifecycle bars without defining the element. Call it before `customElements.define`.
 
 ## Stencil
 
-Stencil records its own timings in dev builds, and in builds made with `stencil build --profile`. One call at startup shows them on the same tracks:
+Stencil records its own timings in dev builds and in builds made with `stencil build --profile`. Call this once at startup to show them on the same tracks:
 
 ```js
 import { observeStencilProfile } from "tuppence/stencil";
@@ -119,15 +131,15 @@ import { observeStencilProfile } from "tuppence/stencil";
 observeStencilProfile();
 ```
 
-Stencil's timing for `render()` includes patching the page, so each update is one **Render and Commit** bar. A **Loading** track shows the app starting and each component's code being loaded, with extra rows when loads overlap.
+Stencil times rendering and DOM updates together, so each update shows as a single **Render and Commit** bar. A **Loading** track shows the app starting up and each component's code loading.
 
 ## Other libraries
 
-Any custom element gets the **Upgrade** bars and the lifecycle bars on **Components** from the one-line setup, whatever built it. That includes Vue components packaged with `defineCustomElement`. The **Scheduler** track and the per-update bars with **Changed Props** need a hook into the library's own update cycle, so they cover Lit and Stencil only.
+Custom elements built with anything else, including Vue's `defineCustomElement`, get the **Upgrade** and lifecycle bars from the one-line setup. The **Scheduler** track and **Changed Props** need a hook into the library's own update cycle, so they only work with Lit and Stencil.
 
 ## Production builds
 
-The package has an empty version with the same API, and bundlers pick it for production builds:
+The package includes an empty version with the same API. Bundlers pick it for production builds:
 
 | Tool | Production build |
 | --- | --- |
@@ -136,9 +148,9 @@ The package has an empty version with the same API, and bundlers pick it for pro
 | esbuild | Empty version with `--conditions=production` |
 | Rollup | Empty version with `exportConditions: ["production"]` in `@rollup/plugin-node-resolve` |
 
-Any tool that supports the standard `"production"` [export condition](https://nodejs.org/api/packages.html#conditional-exports) works the same way. Without a bundler, `configure({ enabled: false })` turns it off.
+This works with any tool that supports the `"production"` [export condition](https://nodejs.org/api/packages.html#conditional-exports). Without a bundler, use `configure({ enabled: false })`.
 
-Vite and webpack decide from `NODE_ENV`, so a dev server started with `NODE_ENV=production` set gets the empty version, so the tracks disappear.
+Vite and webpack decide based on `NODE_ENV`, so a dev server started with `NODE_ENV=production` won't show any tracks.
 
 ## Settings
 
@@ -153,9 +165,13 @@ configure({
 });
 ```
 
-`configure` needs to run before your elements are defined.
+Call `configure` before your elements are defined.
 
-`strategy` sets how bars are drawn. The default, `"auto"`, uses `performance.measure` and removes each entry from the performance buffer straight away. `"measure"` leaves them in the buffer, for test scripts to read. `"timestamp"` uses `console.timeStamp` and drops the details.
+`strategy` controls how bars are drawn:
+
+- `"auto"` (default) uses `performance.measure` and clears each entry from the performance buffer straight away.
+- `"measure"` keeps entries in the buffer, so test scripts can read them.
+- `"timestamp"` uses `console.timeStamp`. It's lighter, but bars have no details.
 
 ## Demo
 
@@ -164,26 +180,26 @@ npm install
 npm run demo
 ```
 
-Open `http://localhost:5173/demo/`, record in the Performance panel, click a few buttons, then stop.
+Open `http://localhost:5173/demo/`, start recording in the Performance panel, click a few buttons, then stop.
 
-For the design system demo, a React shop using a small Lit design system:
+There's also a design system demo, a small React shop built on a Lit design system:
 
 ```sh
 npm run demo:design-system
 ```
 
-Open `http://localhost:5174/`, record, click **Add to cart** a few times, then stop. The **Acme Design System** group shows each table render in yellow as a wasted render. Check **Fix it** and record again: the table stops re-rendering.
+Open `http://localhost:5174/` and record while clicking **Add to cart** a few times. Each table render shows up yellow in the **Acme Design System** group. Check **Fix it**, record again, and the table stops re-rendering.
 
 ## Limitations
 
-- Tracks appear in Chrome and Edge. Other browsers run the code as normal and skip the extra data.
-- Work faster than a tenth of a millisecond is too short to draw.
+- Tracks only show up in Chrome and Edge. Other browsers ignore them.
+- Anything under 0.1 ms is too short to draw.
 - Only synchronous work is timed.
-- Lit elements update one at a time, so their bars sit side by side instead of nesting the way React's do. **Triggered by** links a child's update to its parent.
+- Lit components update one at a time, so their bars sit side by side rather than nested like React's. **Triggered by** shows which parent caused a child's update.
 
 ## Development
 
-`npm test` runs the tests, which need Chrome or Chromium (set `CHROME_PATH` to point at it if needed). `npm run coverage` reports test coverage.
+`npm test` runs the tests. They need Chrome or Chromium; set `CHROME_PATH` if it isn't found automatically. `npm run coverage` reports test coverage.
 
 ## License
 
