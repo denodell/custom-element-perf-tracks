@@ -47,6 +47,26 @@ for (const lit of ["3", "2"]) {
       assert.equal(result("timestampStrategyAddsNothingToBuffer"), 0);
     });
 
+    test("design system elements go under their own track group, by base class or tag prefix", { skip }, () => {
+      const r = result("trackGroupsByPrefixAndClass");
+      for (const key of [
+        "Upgrade: ds-card define",
+        "Components: ds-card connected",
+        "Components: ds-card",
+        "Components: Mount",
+        "Scheduler: Render",
+        "Upgrade: beta-acme define",
+        "Components: beta-acme connected",
+      ]) {
+        assert.equal(r[key], "Acme", key);
+      }
+      assert.equal(r["Upgrade: beta-tip define"], "Beta");
+      assert.equal(r["Components: beta-tip connected"], "Beta");
+      assert.equal(r["Upgrade: app-page define"], "Web Components");
+      assert.equal(r["Components: app-page connected"], "Web Components");
+      assert.equal(r.afterRemoving, "Web Components");
+    });
+
     test("lifecycle callbacks go on the Components track, mount/unmount in React's warning color", { skip }, () => {
       assert.deepEqual(result("lifecycleOnComponentsTrack"), [
         ["lc-el connected", "warning"],

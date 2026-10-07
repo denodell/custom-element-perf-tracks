@@ -19,4 +19,5 @@ export {
   type InstrumentOptions,
   type LifecycleCallback,
 } from "./define.js";
+export { assignTrackGroup } from "./groups.js";
 export { rerouteMeasures, type RerouteTarget } from "./reroute.js";

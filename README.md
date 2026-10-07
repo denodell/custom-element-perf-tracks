@@ -83,6 +83,24 @@ observeStencilProfile();
 
 Stencil's timing for `render()` includes patching the page, so each update is one **Render and Commit** bar. A **Loading** track shows the app starting and each component's code being loaded, with extra rows when loads overlap.
 
+## Design systems
+
+By default every element's bars go in one **Web Components** group. A design system can put its own elements in a group of their own, so its work shows up separately from the app's, and from any other library on the page:
+
+```js
+import { assignTrackGroup } from "custom-element-perf-tracks";
+
+// Every element that extends the design system's base class.
+assignTrackGroup(AcmeElement, "Acme Design System");
+
+// Or every element whose tag starts with a prefix.
+assignTrackGroup("acme-", "Acme Design System");
+```
+
+Each call adds a rule without replacing anyone else's, so the app and every library it uses can add their own. A class rule covers the class and everything that extends it, and wins over a prefix rule. Among prefixes, the longest match wins. Each group gets its own Scheduler, Components and Upgrade tracks.
+
+A design system can depend on this package directly. Apps that use it get the empty production version in their production builds, so the rules cost nothing there.
+
 ## Production builds
 
 The package has an empty version with the same API, and bundlers pick it for production builds:

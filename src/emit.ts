@@ -92,6 +92,11 @@ export function isEnabled(): boolean {
   return config.enabled;
 }
 
+/** @internal The default track group, without copying the config. */
+export function defaultTrackGroup(): string {
+  return config.trackGroup;
+}
+
 /** @internal */
 export function minDuration(): number {
   return config.minDuration;
@@ -118,6 +123,11 @@ export interface ConsoleTask {
 
 export interface EmitOptions {
   track: string;
+  /**
+   * The track group this bar goes under. Defaults to the configured
+   * `trackGroup`. See also `assignTrackGroup`.
+   */
+  trackGroup?: string;
   color?: TrackColor;
   /**
    * Extra details, shown in the DevTools summary panel when the bar is
@@ -195,9 +205,10 @@ function draw_(name: string, start: number, end: number, options: EmitOptions): 
   }
 
   const useTimeStamp = typeof timeStamp === "function" && strategy === "timestamp";
+  const trackGroup = options.trackGroup || config.trackGroup;
 
   if (useTimeStamp) {
-    timeStamp!.call(console, name, start, end, options.track, config.trackGroup, color);
+    timeStamp!.call(console, name, start, end, options.track, trackGroup, color);
     return;
   }
 
@@ -208,7 +219,7 @@ function draw_(name: string, start: number, end: number, options: EmitOptions): 
     detail: {
       devtools: {
         dataType: "track-entry",
-        trackGroup: config.trackGroup,
+        trackGroup,
         track: options.track,
         color,
         properties: properties?.length ? properties : undefined,

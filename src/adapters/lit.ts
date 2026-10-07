@@ -17,6 +17,7 @@ import {
   type Properties,
 } from "../emit.js";
 import { instrumentAll, labelFor } from "../define.js";
+import { groupFor } from "../groups.js";
 
 /**
  * Lit update tracking, laid out the way React's performance tracks are.
@@ -126,8 +127,12 @@ function currentEvent(): EventInfo | null {
 /** Updates in progress, innermost last. */
 const updating: Frame[] = [];
 
-/** End of the last update drawn on the Scheduler track, so bars never overlap. */
-let schedulerEnd = 0;
+/**
+ * End of the last update drawn on each group's Scheduler track, so bars on
+ * one track never overlap.
+ */
+const schedulerEnds = new Map<string, number>();
+const schedulerEnd = (group: string) => schedulerEnds.get(group) ?? 0;
 
 type Phase = "before-render" | "render" | "after-render";
 
@@ -255,6 +260,11 @@ class LitUpdateTracker implements ReactiveController {
       if (failed) throw error;
       return result;
     };
+  }
+
+  /** Looked up each time, so rules added later still apply. */
+  private get group(): string {
+    return groupFor(this.tag, this.host.constructor);
   }
 
   private get current(): Frame | undefined {
@@ -391,12 +401,14 @@ class LitUpdateTracker implements ReactiveController {
   private drawUpdateWait(updateStart: number): void {
     const root = this.root;
     if (!root) return;
-    const requestAt = Math.max(root.at, schedulerEnd);
+    const trackGroup = this.group;
+    const requestAt = Math.max(root.at, schedulerEnd(trackGroup));
     if (root.event) {
-      const eventStart = Math.max(root.event.timeStamp, schedulerEnd);
+      const eventStart = Math.max(root.event.timeStamp, schedulerEnd(trackGroup));
       if (requestAt > eventStart) {
         emit(`Event: ${root.event.type}`, eventStart, requestAt, {
           track: Tracks.scheduler,
+          trackGroup,
           color: "warning",
           task: this.task,
         });
@@ -407,12 +419,13 @@ class LitUpdateTracker implements ReactiveController {
       if (root.property) properties.push(["Property", root.property]);
       emit(updateStart - requestAt > 5 ? "Update Blocked" : "Update", requestAt, updateStart, {
         track: Tracks.scheduler,
+        trackGroup,
         color: "primary-light",
         task: this.task,
         properties,
       });
     }
-    schedulerEnd = Math.max(schedulerEnd, updateStart);
+    schedulerEnds.set(trackGroup, Math.max(schedulerEnd(trackGroup), updateStart));
   }
 
   end(frame: Frame, failed: boolean, error: unknown): void {
@@ -428,6 +441,7 @@ class LitUpdateTracker implements ReactiveController {
     const ran = frame.info !== null;
     const info = frame.info ?? this.takeInfo();
     const { tag, task } = this;
+    const trackGroup = this.group;
     const { start, first, cascade } = frame;
     const renderEnd = frame.renderEnd ?? frame.effectsStart ?? end;
 
@@ -455,6 +469,7 @@ class LitUpdateTracker implements ReactiveController {
       if (cascade) {
         emit("Cascading Update", start, end, {
           track: Tracks.scheduler,
+          trackGroup,
           color: "error",
           task,
           properties: [
@@ -464,24 +479,25 @@ class LitUpdateTracker implements ReactiveController {
         });
       }
       if (failed) {
-        emit("Errored", start, end, { track: Tracks.scheduler, color: "error", task });
+        emit("Errored", start, end, { track: Tracks.scheduler, trackGroup, color: "error", task });
       } else {
-        emit("Render", start, renderEnd, { track: Tracks.scheduler, color: "primary-dark", task });
+        emit("Render", start, renderEnd, { track: Tracks.scheduler, trackGroup, color: "primary-dark", task });
         if (end > renderEnd) {
-          emit("Commit", renderEnd, end, { track: Tracks.scheduler, color: "secondary-dark", task });
+          emit("Commit", renderEnd, end, { track: Tracks.scheduler, trackGroup, color: "secondary-dark", task });
         }
       }
-      schedulerEnd = Math.max(schedulerEnd, end);
+      schedulerEnds.set(trackGroup, Math.max(schedulerEnd(trackGroup), end));
     }
 
     // Components track.
     if (failed) {
-      emit(tag, start, end, withError({ track: Tracks.components, task, properties: details }, error));
+      emit(tag, start, end, withError({ track: Tracks.components, trackGroup, task, properties: details }, error));
       return;
     }
     if (!ran) {
       emit(`${tag} skipped`, start, end, {
         track: Tracks.components,
+        trackGroup,
         color: "primary-light",
         task,
         tooltip: `${tag}: shouldUpdate() returned false`,
@@ -489,9 +505,10 @@ class LitUpdateTracker implements ReactiveController {
       });
       return;
     }
-    if (first) emit("Mount", start, end, { track: Tracks.components, color: "warning", task });
+    if (first) emit("Mount", start, end, { track: Tracks.components, trackGroup, color: "warning", task });
     emit(tag, start, renderEnd, {
       track: Tracks.components,
+      trackGroup,
       color: renderColor(renderEnd - start),
       task,
       properties: details,
@@ -499,6 +516,7 @@ class LitUpdateTracker implements ReactiveController {
     if (frame.effectsStart !== null && end - frame.effectsStart >= minDuration()) {
       emit(tag, frame.effectsStart, end, {
         track: Tracks.components,
+        trackGroup,
         color: effectColor(end - frame.effectsStart),
         task,
       });

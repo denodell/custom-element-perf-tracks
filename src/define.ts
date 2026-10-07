@@ -11,6 +11,7 @@ import {
   type EmitOptions,
   type TrackColor,
 } from "./emit.js";
+import { groupFor } from "./groups.js";
 
 export type LifecycleCallback =
   | "connectedCallback"
@@ -128,8 +129,10 @@ function instrument(ctor: CustomElementConstructor, options: InstrumentOptions):
       const end = now();
       // Like React's effects, very short callbacks are not drawn.
       if (failed || end - start >= minDuration()) {
+        const tag = labelFor(this);
         const options: EmitOptions = {
           track: Tracks.components,
+          trackGroup: groupFor(tag, this.constructor),
           color,
           properties:
             cb === "attributeChangedCallback"
@@ -140,7 +143,7 @@ function instrument(ctor: CustomElementConstructor, options: InstrumentOptions):
                 ]
               : undefined,
         };
-        emit(`${labelFor(this)} ${label}`, start, end, failed ? withError(options, error) : options);
+        emit(`${tag} ${label}`, start, end, failed ? withError(options, error) : options);
       }
       if (failed) throw error;
       return result;
@@ -215,6 +218,7 @@ export function definePerf(
     upgrading = previous;
     emit(`${tagName} define`, start, now(), {
       track: Tracks.upgrade,
+      trackGroup: groupFor(tagName, ctor),
       color: failed ? "error" : "tertiary",
       properties: countable ? [["Elements upgraded", String(current.count)]] : undefined,
     });
