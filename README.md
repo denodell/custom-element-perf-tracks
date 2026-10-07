@@ -45,7 +45,7 @@ export class AcmeElement extends LitElement {
 assignTrackGroup(AcmeElement, "Acme Design System");
 ```
 
-Every component that extends `AcmeElement` now shows up under its own **Acme Design System** group in the Performance panel, separate from the app's tracks. When an app re-renders a component by passing it a new array or object with the same contents, that render is drawn in yellow and named as a wasted render, along with the property that was given the new array or object.
+Every component that extends `AcmeElement` now shows up under its own **Acme Design System** group in the Performance panel, separate from the app's tracks. When an app re-renders a component by passing it a new array or object with the same contents, that render is drawn in yellow and named as a wasted render, along with the name of the property that got the new value.
 
 Apps that use your design system ship none of Tuppence in production, because bundlers swap in an empty version. See [Production builds](#production-builds). It also won't clash with the app or with other libraries using Tuppence, because each `assignTrackGroup` call adds a rule without replacing anyone else's.
 
