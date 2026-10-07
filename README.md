@@ -4,7 +4,7 @@ Find out which web component did it. Tuppence shows your web components in the C
 
 React 19.2 added [performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks) to the Performance panel, so React developers can see what caused each update, how long each step took, and which components did the work. This library adds the same tracks for custom elements, Lit and Stencil, with the same names and colors.
 
-Building a design system? Your components run inside apps you don't control. When one of them is slow, the app team can't see which component is doing the work, and when the app passes it a new array or object on every render, your component gets the blame. Tuppence gives your components their own group in DevTools, in every app that uses them, and marks renders the app caused for nothing. See [Design systems](#design-systems).
+If you build a design system, your components run inside apps you don't control. When one of them is slow, the app team can't see which component is doing the work, and when the app passes it a new array or object on every render, your component gets the blame. Tuppence gives your components their own group in DevTools, in every app that uses them, and marks the wasted renders the app causes. See [Design systems](#design-systems).
 
 ![Chrome DevTools after clicking a Lit button in the demo. Under Web Components, the Scheduler track shows "Event: click" followed by a blue Render bar and a short Commit bar. The Components track below shows a demo-counter bar lined up with Render.](docs/devtools-lit.png)
 
@@ -28,7 +28,7 @@ None of it reaches production builds. See [Production builds](#production-builds
 
 ## Design systems
 
-A design system can turn Tuppence on for all of its components at once, from its own code, so every app that uses them sees their work in DevTools without any setup of its own. Two lines in the base class do it:
+A design system can turn Tuppence on for all of its components at once, from its own code, so every app that uses those components sees them in DevTools with no setup. It takes two calls:
 
 ```js
 import { LitElement } from "lit";
@@ -45,12 +45,9 @@ export class AcmeElement extends LitElement {
 assignTrackGroup(AcmeElement, "Acme Design System");
 ```
 
-Every component that extends `AcmeElement` now shows up under its own **Acme Design System** group in the Performance panel, separate from the app's tracks. When an app re-renders a component by passing it a new array or object with the same contents, that render is drawn in yellow and named as a wasted render, along with the property that caused it.
+Every component that extends `AcmeElement` now shows up under its own **Acme Design System** group in the Performance panel, separate from the app's tracks. When an app re-renders a component by passing it a new array or object with the same contents, that render is drawn in yellow and named as a wasted render, along with the property that was given the new array or object.
 
-Two things design system teams usually ask:
-
-- **What does it cost the apps that use us?** Nothing in production. The package has an empty version that bundlers use in production builds, so apps ship none of it. See [Production builds](#production-builds).
-- **Will it clash with the app, or with other libraries using Tuppence?** No. Each `assignTrackGroup` call adds a rule without replacing anyone else's, so every library keeps its own group.
+Apps that use your design system ship none of Tuppence in production, because bundlers swap in an empty version. See [Production builds](#production-builds). It also won't clash with the app or with other libraries using Tuppence, because each `assignTrackGroup` call adds a rule without replacing anyone else's.
 
 `assignTrackGroup` also takes a tag prefix, for components that don't share a base class:
 
@@ -86,7 +83,7 @@ To see it working, `npm run demo:design-system` serves a React app built on a sm
 
 **Upgrade** shows each `customElements.define` call, which upgrades every matching element already in the page. Clicking it shows how many were upgraded.
 
-Wasted renders usually come from the app, not the component: code like `<my-table .columns=${[...]}>`, or `columns={[...]}` in React, creates a new array on every render. Only arrays, plain objects and dates are compared by contents; anything else counts as unchanged only if it is the very same object. Lit elements only.
+Wasted renders usually come from the app, not the component: code like `<my-table .columns=${[...]}>`, or `columns={[...]}` in React, creates a new array on every render. Only arrays, plain objects and dates are compared by contents; anything else counts as unchanged only if it's the very same object. This works for Lit elements only.
 
 Bars get darker as work gets slower, using React's thresholds. Anything that throws gets a red bar with the error message.
 
@@ -175,7 +172,7 @@ For the design system demo, a React shop using a small Lit design system:
 npm run demo:design-system
 ```
 
-Open `http://localhost:5174/`, record, click **Add to cart** a few times, then stop. The **Acme Design System** group shows each table render in yellow as a wasted render. Tick **Fix it** and record again: the table stops re-rendering.
+Open `http://localhost:5174/`, record, click **Add to cart** a few times, then stop. The **Acme Design System** group shows each table render in yellow as a wasted render. Check **Fix it** and record again: the table stops re-rendering.
 
 ## Limitations
 
