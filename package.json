@@ -1,13 +1,13 @@
 {
-  "name": "custom-element-perf-tracks",
+  "name": "tuppence",
   "version": "0.1.0",
-  "description": "Shows your web components in the Chrome DevTools Performance panel, as their own custom tracks.",
+  "description": "Find out which web component did it. Shows your web components in the Chrome DevTools Performance panel, as their own custom tracks.",
   "type": "module",
   "license": "MIT",
   "author": "Den Odell",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/denodell/custom-element-perf-tracks.git"
+    "url": "git+https://github.com/denodell/tuppence.git"
   },
   "keywords": [
     "web-components",

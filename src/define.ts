@@ -35,8 +35,8 @@ const COLORS: Record<LifecycleCallback, TrackColor> = {
   adoptedCallback: "primary-light",
 };
 
-const PATCHED = Symbol.for("custom-element-perf-tracks.patched");
-const WRAPPED = Symbol.for("custom-element-perf-tracks.wrapped");
+const PATCHED = Symbol.for("tuppence.patched");
+const WRAPPED = Symbol.for("tuppence.wrapped");
 
 /**
  * Callbacks currently being timed, per element. When a subclass and its base
@@ -89,7 +89,7 @@ function instrument(ctor: CustomElementConstructor, options: InstrumentOptions):
 
   if (typeof customElements !== "undefined" && customElements.getName?.(ctor)) {
     console.warn(
-      `custom-element-perf-tracks: <${customElements.getName(ctor)}> is already defined, ` +
+      `tuppence: <${customElements.getName(ctor)}> is already defined, ` +
         "so its lifecycle callbacks can no longer be timed. Instrument it before defining it.",
     );
     return nothing;
