@@ -1,7 +1,3 @@
-// A React app using the Acme design system. It makes a common mistake: it
-// creates the table's `columns` array inside render, so every render passes
-// the table a new array with the same contents. Tuppence marks those table
-// renders as wasted, in yellow, under the "Acme Design System" group.
 import "./acme.js";
 import { createElement as h, useState, useMemo } from "react";
 import { createRoot } from "react-dom/client";
@@ -22,8 +18,8 @@ function App() {
     { key: "price", label: "Price" },
     { key: "stock", label: "In stock" },
   ];
-  // The fix: the same array is reused until its contents change.
-  const memoColumns = useMemo(() => inlineColumns, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // The fix: the same array is reused.
+  const memoColumns = useMemo(() => inlineColumns, []);
 
   return h(
     "main",

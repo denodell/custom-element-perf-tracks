@@ -1,6 +1,3 @@
-// A tiny made-up design system, "Acme", built with Lit. Its base class turns
-// on Tuppence for every component and puts them all in their own DevTools
-// group. This is the whole setup a design system needs.
 import { LitElement, html, css } from "lit";
 import { trackLitUpdates } from "tuppence/lit";
 import { assignTrackGroup } from "tuppence";
@@ -14,7 +11,6 @@ export class AcmeElement extends LitElement {
 
 assignTrackGroup(AcmeElement, "Acme Design System");
 
-// Simulates a component doing a realistic amount of work.
 const work = (ms) => {
   const end = performance.now() + ms;
   while (performance.now() < end) {}
