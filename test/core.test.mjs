@@ -568,13 +568,28 @@ test("same contents, new object: anything it is not sure about counts as differe
   assert.equal(same([0], [-0]), false);
 });
 
-test("same contents, new object: gives up on deep, huge or throwing values", () => {
-  const deep = () => ({ a: { b: { c: { d: { e: { f: 1 } } } } } });
-  assert.equal(same(deep(), deep()), false, "too deep");
-  const big = () => Array.from({ length: 2000 }, (_, i) => i);
-  assert.equal(same(big(), big()), false, "too many values");
+test("same contents, new object: compares thousands of rows, like an API response parsed again", () => {
+  const rows = () => Array.from({ length: 2000 }, (_, i) => ({ id: i, name: `Customer ${i}`, city: "Leeds", tags: ["a", "b"] }));
+  assert.equal(same(rows(), rows()), true);
+  const changed = rows();
+  changed[1999].city = "York";
+  assert.equal(same(rows(), changed), false, "a change in the last row counts");
+  const nested = () => ({ a: { b: { c: { d: { e: { f: { g: 1 } } } } } } });
+  assert.equal(same(nested(), nested()), true, "seven levels deep");
+});
+
+test("same contents, new object: gives up after a few milliseconds, or on very deep or throwing values", () => {
+  const realNow = performance.now;
+  let t = 0;
+  performance.now = () => (t += 1);
+  try {
+    const big = () => Array.from({ length: 5000 }, (_, i) => i);
+    assert.equal(same(big(), big()), false, "out of time");
+  } finally {
+    performance.now = realNow;
+  }
+  const deep = (n) => (n === 0 ? 1 : { next: deep(n - 1) });
+  assert.equal(same(deep(40), deep(40)), false, "too deep");
   const throwing = () => Object.defineProperty({}, "x", { enumerable: true, get() { throw new Error("no"); } });
   assert.equal(same(throwing(), throwing()), false);
-  const shallow = () => ({ a: { b: { c: { d: 1 } } } });
-  assert.equal(same(shallow(), shallow()), true, "within the depth limit");
 });

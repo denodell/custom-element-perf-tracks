@@ -1,9 +1,17 @@
-const BUDGET = 1000;
-const MAX_DEPTH = 5;
+import { now } from "./emit.js";
+
+// Long enough to compare a few thousand rows, short enough to stay out of the way.
+const TIME_LIMIT_MS = 8;
+const MAX_DEPTH = 32;
 
 const GIVE_UP = Symbol("give up");
 
 type Kind = "array" | "object" | "date";
+
+interface Limits {
+  deadline: number;
+  visited: number;
+}
 
 function kindOf(value: unknown): Kind | null {
   if (typeof value !== "object" || value === null) return null;
@@ -15,16 +23,16 @@ function kindOf(value: unknown): Kind | null {
 
 export function sameContentsNewObject(before: unknown, after: unknown): boolean {
   if (before === after || !kindOf(before) || !kindOf(after)) return false;
-  const budget = { left: BUDGET };
+  const limits: Limits = { deadline: now() + TIME_LIMIT_MS, visited: 0 };
   try {
-    return equal(before, after, 0, budget);
+    return equal(before, after, 0, limits);
   } catch {
     return false;
   }
 }
 
-function equal(a: unknown, b: unknown, depth: number, budget: { left: number }): boolean {
-  if (--budget.left < 0) throw GIVE_UP;
+function equal(a: unknown, b: unknown, depth: number, limits: Limits): boolean {
+  if ((++limits.visited & 255) === 0 && now() > limits.deadline) throw GIVE_UP;
   if (Object.is(a, b)) return true;
   const kind = kindOf(a);
   if (!kind || kind !== kindOf(b)) return false;
@@ -37,7 +45,7 @@ function equal(a: unknown, b: unknown, depth: number, budget: { left: number }):
     const y = b as unknown[];
     if (x.length !== y.length) return false;
     for (let i = 0; i < x.length; i++) {
-      if (!equal(x[i], y[i], depth + 1, budget)) return false;
+      if (!equal(x[i], y[i], depth + 1, limits)) return false;
     }
     return true;
   }
@@ -48,7 +56,7 @@ function equal(a: unknown, b: unknown, depth: number, budget: { left: number }):
   if (keys.length !== Object.keys(y).length) return false;
   for (const key of keys) {
     if (!Object.prototype.hasOwnProperty.call(y, key)) return false;
-    if (!equal(x[key], y[key], depth + 1, budget)) return false;
+    if (!equal(x[key], y[key], depth + 1, limits)) return false;
   }
   return true;
 }
