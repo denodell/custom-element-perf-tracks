@@ -45,33 +45,11 @@ assignTrackGroup(AcmeElement, "Acme Design System");
 
 Components that extend `AcmeElement` show up under **Acme Design System**, separate from the app's own tracks.
 
-You can also match components by tag prefix:
+Or match them by tag prefix:
 
 ```js
 assignTrackGroup("acme-", "Acme Design System");
 ```
-
-When a component matches both a class and a prefix, the class wins. When it matches more than one prefix, the longest one wins. Rules from different libraries stay separate, so two design systems on the same page each get their own group.
-
-None of this ends up in the production builds of apps that use your design system.
-
-## Wasted renders
-
-When a Lit component re-renders only because it was given a new array, object or date with the same contents, Tuppence draws that render in yellow and lists the property under **Same contents, new object**.
-
-This usually comes from app code that creates a new value on every render:
-
-```jsx
-// React
-<acme-table columns={[{ key: "name", label: "Name" }]} />
-```
-
-```js
-// Lit
-html`<acme-table .columns=${[{ key: "name", label: "Name" }]}></acme-table>`;
-```
-
-Arrays, plain objects and dates are compared by their contents. Anything else, like a class instance or a `Map`, has to be the same object to count as unchanged.
 
 ## What you see
 
@@ -90,7 +68,7 @@ Arrays, plain objects and dates are compared by their contents. Anything else, l
 | Bar | What it shows |
 | --- | --- |
 | **my-element** (blue) | The render. Click it to see **Changed Props** with old and new values, how many **Changes batched** into the update, and which parent it was **Triggered by**. |
-| **my-element** (yellow) | A [wasted render](#wasted-renders). |
+| **my-element** (yellow) | A wasted render: the only change was a new array, object or date with the same contents, often from passing `[...]` or `{...}` inline. |
 | **my-element** (purple) | `firstUpdated()` and `updated()`. |
 | **Mount** | A component's first update. |
 | **my-element connected** | Lifecycle callbacks: `connected`, `disconnected`, `attributeChanged` and `adopted`. |
@@ -132,10 +110,6 @@ observeStencilProfile();
 ```
 
 Stencil times rendering and DOM updates together, so each update shows as a single **Render and Commit** bar. A **Loading** track shows the app starting up and each component's code loading.
-
-## Other libraries
-
-Custom elements built with anything else, including Vue's `defineCustomElement`, get the **Upgrade** and lifecycle bars from the one-line setup. The **Scheduler** track and **Changed Props** need a hook into the library's own update cycle, so they only work with Lit and Stencil.
 
 ## Production builds
 
@@ -182,19 +156,14 @@ npm run demo
 
 Open `http://localhost:5173/demo/`, start recording in the Performance panel, click a few buttons, then stop.
 
-There's also a design system demo, a small React shop built on a Lit design system:
-
-```sh
-npm run demo:design-system
-```
-
-Open `http://localhost:5174/` and record while clicking **Add to cart** a few times. Each table render shows up yellow in the **Acme Design System** group. Check **Fix it**, record again, and the table stops re-rendering.
+`npm run demo:design-system` runs a second demo, a React app using a small Lit design system, at `http://localhost:5174/`.
 
 ## Limitations
 
 - Tracks only show up in Chrome and Edge. Other browsers ignore them.
 - Anything under 0.1 ms is too short to draw.
 - Only synchronous work is timed.
+- Render details are for Lit and Stencil. Other custom elements get the Upgrade and lifecycle bars.
 - Lit components update one at a time, so their bars sit side by side rather than nested like React's. **Triggered by** shows which parent caused a child's update.
 
 ## Development
