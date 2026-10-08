@@ -3,9 +3,9 @@ const MAX_DEPTH = 5;
 
 const GIVE_UP = Symbol("give up");
 
-type Kind = "array" | "object" | "date";
+export type Kind = "array" | "object" | "date";
 
-function kindOf(value: unknown): Kind | null {
+export function kindOf(value: unknown): Kind | null {
   if (typeof value !== "object" || value === null) return null;
   if (Array.isArray(value)) return "array";
   if (value instanceof Date) return "date";

@@ -17,7 +17,7 @@ import {
 } from "../emit.js";
 import { instrumentAll, labelFor } from "../define.js";
 import { groupFor } from "../groups.js";
-import { sameContentsNewObject } from "../compare.js";
+import { kindOf, sameContentsNewObject, type Kind } from "../compare.js";
 
 interface Protected {
   performUpdate(): unknown;
@@ -371,7 +371,7 @@ class LitUpdateTracker implements ReactiveController {
             .map(([name]) => name)
         : [];
     const noChanges = sameContents.length > 0 && sameContents.length === info.changed.length && !info.manual;
-    const copies = `${listNames(sameContents)} got ${sameContents.length > 1 ? "new copies" : "a new copy"} with the same values`;
+    const copies = noChanges ? describeCopies(info.changed) : "";
 
     const details = (): Properties => {
       const rows: Properties = [];
@@ -478,4 +478,22 @@ export function trackAllLitElements(): () => void {
 
 function listNames(names: string[]): string {
   return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+}
+
+/** "items was set to a new array with the same values", grouped by kind of value. */
+function describeCopies(changed: UpdateInfo["changed"]): string {
+  const byKind = new Map<Kind, string[]>();
+  for (const [name, , value] of changed) {
+    const kind = kindOf(value)!;
+    let names = byKind.get(kind);
+    if (!names) byKind.set(kind, (names = []));
+    names.push(name);
+  }
+  const clauses = [...byKind].map(([kind, names], i) => {
+    const many = names.length > 1;
+    const what = many ? `new ${kind}s` : `a new ${kind}`;
+    const same = kind === "date" && !many ? "the same value" : "the same values";
+    return `${listNames(names)}${i === 0 ? (many ? " were set" : " was set") : ""} to ${what} with ${same}`;
+  });
+  return clauses.length > 1 ? `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}` : clauses[0];
 }

@@ -814,10 +814,11 @@
     async litNoChangeRenders() {
       class Thing {}
       class LitWaste extends LitElement {
-        static properties = { items: { type: Array }, options: { type: Object }, when: { type: Object }, label: { type: String } };
+        static properties = { items: { type: Array }, tags: { type: Array }, options: { type: Object }, when: { type: Object }, label: { type: String } };
         constructor() {
           super();
           this.items = [1, 2, 3];
+          this.tags = ["a"];
           this.options = { dense: true, sort: { by: "name" } };
           this.when = new Date(0);
           this.label = "a";
@@ -837,6 +838,7 @@
       return {
         mount: mountBar.props["No changes"] ?? null,
         newArray: await bar(() => { el.items = [1, 2, 3]; }),
+        newArrays: await bar(() => { el.items = [1, 2, 3]; el.tags = ["a"]; }),
         newNested: await bar(() => { el.options = { sort: { by: "name" }, dense: true }; el.when = new Date(0); }),
         mixed: await bar(() => { el.items = [1, 2, 3]; el.label = "b"; }),
         realChange: await bar(() => { el.items = [1, 2, 3, 4]; }),

@@ -48,8 +48,12 @@ for (const lit of ["3", "2"]) {
       const r = result("litNoChangeRenders");
       assert.equal(r.mount, null, "the first render is never marked");
       const noChanges = (text) => ({ name: "lit-waste (no changes)", color: "warning", noChanges: text, same: null });
-      assert.deepEqual(r.newArray, noChanges("items got a new copy with the same values"));
-      assert.deepEqual(r.newNested, noChanges("options and when got new copies with the same values"));
+      assert.deepEqual(r.newArray, noChanges("items was set to a new array with the same values"));
+      assert.deepEqual(r.newArrays, noChanges("items and tags were set to new arrays with the same values"));
+      assert.deepEqual(
+        r.newNested,
+        noChanges("options was set to a new object with the same values, and when to a new date with the same value"),
+      );
       assert.equal(r.mixed.noChanges, null);
       assert.equal(r.mixed.same, "items");
       assert.equal(r.mixed.name, "lit-waste");
