@@ -1,5 +1,7 @@
 # Tuppence
 
+<img width="200" height="200" alt="4AA625DC-3AB2-4B6B-ADAE-D1711727993F" src="https://github.com/user-attachments/assets/df550980-b876-4f23-accc-131814d89a72" />
+
 Tuppence adds tracks to the Chrome DevTools Performance panel that show when your web components update, what caused it, and how long it took.
 
 ![Chrome DevTools after clicking a Lit button in the demo. Under Web Components, the Scheduler track shows "Event: click" followed by a blue Render bar and a short Commit bar. The Components track below shows a demo-counter bar lined up with Render.](docs/devtools-lit.png)
