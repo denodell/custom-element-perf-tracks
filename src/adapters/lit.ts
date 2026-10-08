@@ -370,12 +370,13 @@ class LitUpdateTracker implements ReactiveController {
             .filter(([, old, value]) => value !== UNREADABLE && sameContentsNewObject(old, value))
             .map(([name]) => name)
         : [];
-    const wasted = sameContents.length > 0 && sameContents.length === info.changed.length && !info.manual;
+    const noChanges = sameContents.length > 0 && sameContents.length === info.changed.length && !info.manual;
+    const copies = `${listNames(sameContents)} got ${sameContents.length > 1 ? "new copies" : "a new copy"} with the same values`;
 
     const details = (): Properties => {
       const rows: Properties = [];
-      if (wasted) rows.push(["Wasted render", "no property's contents changed"]);
-      if (sameContents.length) rows.push(["Same contents, new object", sameContents.join(", ")]);
+      if (noChanges) rows.push(["No changes", copies]);
+      else if (sameContents.length) rows.push(["Same contents, new object", sameContents.join(", ")]);
       if (info.triggeredBy) rows.push(["Triggered by", info.triggeredBy]);
       if (info.changes > 1) rows.push(["Changes batched", String(info.changes)]);
       if (info.manual && info.changed.length === 0) rows.push(["Update requested", "requestUpdate()"]);
@@ -431,12 +432,12 @@ class LitUpdateTracker implements ReactiveController {
       return;
     }
     if (first) emit("Mount", start, end, { track: Tracks.components, trackGroup, color: "warning", task });
-    emit(tag, start, renderEnd, {
+    emit(noChanges ? `${tag} (no changes)` : tag, start, renderEnd, {
       track: Tracks.components,
       trackGroup,
-      color: wasted ? "warning" : renderColor(renderEnd - start),
+      color: noChanges ? "warning" : renderColor(renderEnd - start),
       task,
-      tooltip: wasted ? `${tag}: wasted render (${sameContents.join(", ")}: new object, same contents)` : undefined,
+      tooltip: noChanges ? `${tag}: no changes (${copies})` : undefined,
       properties: details,
     });
     if (frame.effectsStart !== null && end - frame.effectsStart >= minDuration()) {
@@ -473,4 +474,8 @@ export function trackAllLitElements(): () => void {
       }
     },
   });
+}
+
+function listNames(names: string[]): string {
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
 }

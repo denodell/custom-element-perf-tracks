@@ -44,18 +44,19 @@ for (const lit of ["3", "2"]) {
       assert.equal(result("timestampStrategyAddsNothingToBuffer"), 0);
     });
 
-    test("Lit: a render caused only by new objects with the same contents is marked as wasted", { skip }, () => {
-      const r = result("litWastedRenders");
-      assert.equal(r.mount, null, "the first render is never wasted");
-      const wasted = (same) => ({ color: "warning", wasted: "no property's contents changed", same });
-      assert.deepEqual(r.newArray, wasted("items"));
-      assert.deepEqual(r.newNested, wasted("options, when"));
-      assert.equal(r.mixed.wasted, null);
+    test("Lit: a render caused only by new objects with the same contents is marked as no changes", { skip }, () => {
+      const r = result("litNoChangeRenders");
+      assert.equal(r.mount, null, "the first render is never marked");
+      const noChanges = (text) => ({ name: "lit-waste (no changes)", color: "warning", noChanges: text, same: null });
+      assert.deepEqual(r.newArray, noChanges("items got a new copy with the same values"));
+      assert.deepEqual(r.newNested, noChanges("options and when got new copies with the same values"));
+      assert.equal(r.mixed.noChanges, null);
       assert.equal(r.mixed.same, "items");
+      assert.equal(r.mixed.name, "lit-waste");
       assert.notEqual(r.mixed.color, "warning");
-      assert.deepEqual([r.realChange.wasted, r.realChange.same], [null, null]);
-      assert.deepEqual([r.classInstances.wasted, r.classInstances.same], [null, null]);
-      assert.equal(r.withRequestUpdate.wasted, null);
+      assert.deepEqual([r.realChange.noChanges, r.realChange.same], [null, null]);
+      assert.deepEqual([r.classInstances.noChanges, r.classInstances.same], [null, null]);
+      assert.equal(r.withRequestUpdate.noChanges, null);
       assert.equal(r.withRequestUpdate.same, "items");
     });
 

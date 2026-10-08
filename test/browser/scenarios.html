@@ -811,7 +811,7 @@
       };
     },
 
-    async litWastedRenders() {
+    async litNoChangeRenders() {
       class Thing {}
       class LitWaste extends LitElement {
         static properties = { items: { type: Array }, options: { type: Object }, when: { type: Object }, label: { type: String } };
@@ -830,12 +830,12 @@
       const mount = await collect(async () => { document.body.append(el); await el.updateComplete; });
       const bar = async (fn) => {
         const got = await collect(async () => { fn(); await el.updateComplete; });
-        const b = on("Components", got).find((x) => x.name === "lit-waste" && !x.color.startsWith("secondary"));
-        return { color: b.color, wasted: b.props["Wasted render"] ?? null, same: b.props["Same contents, new object"] ?? null };
+        const b = on("Components", got).find((x) => x.name.startsWith("lit-waste") && !x.color.startsWith("secondary"));
+        return { name: b.name, color: b.color, noChanges: b.props["No changes"] ?? null, same: b.props["Same contents, new object"] ?? null };
       };
       const mountBar = on("Components", mount).find((x) => x.name === "lit-waste");
       return {
-        mount: mountBar.props["Wasted render"] ?? null,
+        mount: mountBar.props["No changes"] ?? null,
         newArray: await bar(() => { el.items = [1, 2, 3]; }),
         newNested: await bar(() => { el.options = { sort: { by: "name" }, dense: true }; el.when = new Date(0); }),
         mixed: await bar(() => { el.items = [1, 2, 3]; el.label = "b"; }),

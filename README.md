@@ -6,7 +6,7 @@ Tuppence adds tracks to the Chrome DevTools Performance panel that show when you
 
 ![Chrome DevTools after clicking a Lit button in the demo. Under Web Components, the Scheduler track shows "Event: click" followed by a blue Render bar and a short Commit bar. The Components track below shows a demo-counter bar lined up with Render.](docs/devtools-lit.png)
 
-It works like the [performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks) React 19.2 added, with the same names and colors, but for Lit, Stencil and other custom elements. It also points out renders that didn't need to happen.
+It works like the [performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks) React 19.2 added, with the same names and colors, but for Lit, Stencil and other custom elements. It also points out renders where nothing changed.
 
 ## Install
 
@@ -70,7 +70,7 @@ assignTrackGroup("acme-", "Acme Design System");
 | Bar | What it shows |
 | --- | --- |
 | **my-element** (blue) | The render. Click it to see **Changed Props** with old and new values, how many **Changes batched** into the update, and which parent it was **Triggered by**. |
-| **my-element** (yellow) | A wasted render: the only change was a new array, object or date with the same contents, often from passing `[...]` or `{...}` inline. |
+| **my-element (no changes)** (yellow) | The component rendered, but nothing had changed. A property got a new array, object or date with the same values, often from passing `[...]` or `{...}` inline. |
 | **my-element** (purple) | `firstUpdated()` and `updated()`. |
 | **Mount** | A component's first update. |
 | **my-element connected** | Lifecycle callbacks: `connected`, `disconnected`, `attributeChanged` and `adopted`. |
