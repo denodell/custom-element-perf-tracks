@@ -20,7 +20,7 @@ Import it at the top of your app's entry file, before any components load:
 import "tuppence/register";
 ```
 
-Record a profile in the Performance panel and you'll see a **Web Components** group with your components in it.
+Record a profile in the [Performance panel](https://developer.chrome.com/docs/devtools/performance/overview) and you'll see a **Web Components** group with your components in it. If it's missing, turn on **Show custom tracks** in the panel's capture settings.
 
 Tuppence is a development tool. Production builds use an empty version of the package, so none of it ships to your users. See [Production builds](#production-builds).
 
@@ -53,7 +53,7 @@ assignTrackGroup("acme-", "Acme Design System");
 
 ## What you see
 
-**Scheduler** shows each update as a row of steps, like React's Scheduler track:
+**Scheduler** shows each update as a row of steps, like React's Scheduler track. The steps follow Lit's [update lifecycle](https://lit.dev/docs/components/lifecycle/):
 
 | Bar | What it shows |
 | --- | --- |
@@ -73,7 +73,7 @@ assignTrackGroup("acme-", "Acme Design System");
 | **Mount** | A component's first update. |
 | **my-element connected** | Lifecycle callbacks: `connected`, `disconnected`, `attributeChanged` and `adopted`. |
 
-**Upgrade** shows each `customElements.define` call. Click it to see how many elements already on the page it upgraded.
+**Upgrade** shows each [`customElements.define`](https://developer.mozilla.org/en-US/docs/Web/API/CustomElementRegistry/define) call. Click it to see how many elements already on the page it upgraded.
 
 Bars get darker the longer they take, using React's thresholds. Errors show as red bars with the error message.
 
@@ -101,7 +101,7 @@ class MyCounter extends LitElement {
 
 ## Stencil
 
-Stencil records its own timings in dev builds and in builds made with `stencil build --profile`. Call this once at startup to show them on the same tracks:
+Stencil records its own timings in dev builds and in builds made with [`stencil build --profile`](https://stenciljs.com/docs/cli). Call this once at startup to show them on the same tracks:
 
 ```js
 import { observeStencilProfile } from "tuppence/stencil";
@@ -143,9 +143,11 @@ Call `configure` before your elements are defined.
 
 `strategy` controls how bars are drawn:
 
-- `"auto"` (default) uses `performance.measure` and clears each entry from the performance buffer straight away.
+- `"auto"` (default) uses [`performance.measure`](https://developer.mozilla.org/en-US/docs/Web/API/Performance/measure) and clears each entry from the performance buffer straight away.
 - `"measure"` keeps entries in the buffer, so test scripts can read them.
 - `"timestamp"` uses `console.timeStamp`. It's lighter, but bars have no details.
+
+All three use Chrome's [Performance panel extensibility API](https://developer.chrome.com/docs/devtools/performance/extension).
 
 ## Demo
 
