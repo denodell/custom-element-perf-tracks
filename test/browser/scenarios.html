@@ -654,6 +654,41 @@
       }
     },
 
+    async excludeLeavesElementsOut() {
+      configure({ exclude: ["ex-", /-quiet$/] });
+      const hooked = [];
+      const stop = instrumentAll({ onDefine: (_c, name) => hooked.push(name) });
+      const ran = [];
+      class ExCard extends HTMLElement { connectedCallback() { work(0.5); ran.push(this.localName); } }
+      class ExAuto extends HTMLElement { connectedCallback() { work(0.5); ran.push(this.localName); } }
+      class ExManual extends HTMLElement { connectedCallback() { work(0.5); ran.push(this.localName); } }
+      class KeptEl extends HTMLElement { connectedCallback() { work(0.5); ran.push(this.localName); } }
+      class LitQuiet extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { work(0.5); return html`${this.v}`; }
+      }
+      try {
+        const got = await collect(async () => {
+          define("ex-card", ExCard);
+          customElements.define("ex-auto", ExAuto);
+          trackElement(ExManual);
+          CustomElementRegistry.prototype.define.call(customElements, "ex-manual", ExManual);
+          customElements.define("lit-quiet", LitQuiet);
+          customElements.define("kept-el", KeptEl);
+          const quiet = new LitQuiet();
+          document.body.append(new ExCard(), new ExAuto(), new ExManual(), new KeptEl(), quiet);
+          await quiet.updateComplete;
+          quiet.v++;
+          await quiet.updateComplete;
+        });
+        return { bars: [...new Set(names(got))].sort(), ran, hooked };
+      } finally {
+        stop();
+        configure({ exclude: [] });
+      }
+    },
+
     async instrumentAllEdgeCases() {
       const out = {};
       let stop = instrumentAll({ onDefine() { throw new Error("hook broke"); } });

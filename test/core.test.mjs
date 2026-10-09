@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PerformanceObserver } from "node:perf_hooks";
-import { configure, getConfig, timed } from "../dist/index.js";
+import { configure, getConfig, track } from "../dist/index.js";
 // Internal pieces, tested directly.
 import { emit } from "../dist/emit.js";
 import { rerouteMeasures } from "../dist/reroute.js";
@@ -74,11 +74,11 @@ test("configure ignores undefined and getConfig returns a copy", () => {
   assert.equal(getConfig().trackGroup, "Web Components · Tuppence");
 });
 
-test("timed returns the value, rethrows the error, and colours failures", async () => {
+test("track returns the value, rethrows the error, and colours failures", async () => {
   const { seen, stop } = collect();
-  assert.equal(timed("<t> ok", { track: "Updates" }, () => 42), 42);
+  assert.equal(track("<t> ok", () => 42, { track: "Updates" }), 42);
   const err = new TypeError("orig");
-  assert.throws(() => timed("<t> bad", { track: "Updates" }, () => { throw err; }), (e) => e === err);
+  assert.throws(() => track("<t> bad", () => { throw err; }, { track: "Updates" }), (e) => e === err);
   await tick();
   stop();
   assert.deepEqual(seen.map((e) => [e.name, e.detail.devtools.color, e.detail.devtools.properties]), [
@@ -217,17 +217,17 @@ test("if drawing itself fails, emit swallows the error", () => {
   performance.measure = () => { throw new Error("drawing broke"); };
   try {
     assert.doesNotThrow(() => emit("<d> x", 0, 1, { track: "Components" }));
-    assert.equal(timed("<d> y", { track: "Components" }, () => "kept"), "kept");
+    assert.equal(track("<d> y", () => "kept", { track: "Components" }), "kept");
   } finally {
     performance.measure = measure;
   }
 });
 
-test("timed reports non-Error throws and does nothing extra when disabled", async () => {
+test("track reports non-Error throws and does nothing extra when disabled", async () => {
   const { seen, stop } = collect();
-  assert.throws(() => timed("<t> str", { track: "Updates" }, () => { throw "plain string"; }));
+  assert.throws(() => track("<t> str", () => { throw "plain string"; }, { track: "Updates" }));
   configure({ enabled: false });
-  assert.equal(timed("<t> off", { track: "Updates" }, () => 7), 7);
+  assert.equal(track("<t> off", () => 7, { track: "Updates" }), 7);
   configure({ enabled: true });
   await tick();
   stop();
@@ -294,7 +294,7 @@ test("the production version has exactly the same exports, and does nothing", as
   assert.equal(prod.getConfig().trackGroup, "Web Components · Tuppence");
 
   const { seen, stop } = collect();
-  assert.equal(prod.timed("x", { track: "Components" }, () => 5), 5);
+  assert.equal(prod.track("x", () => 5), 5);
   prod.configure({ enabled: true });
   assert.equal(prod.getConfig().enabled, false);
   assert.equal(typeof prodStencil.observeStencilProfile(), "function");
@@ -332,7 +332,7 @@ test("bars with no length are not drawn", async () => {
 test("error bars are drawn even with no length", async () => {
   const { seen, stop } = collect();
   const t = performance.now();
-  assert.throws(() => timed("<z> instant failure", { track: "Components" }, () => { throw new Error("now"); }));
+  assert.throws(() => track("<z> instant failure", () => { throw new Error("now"); }, { track: "Components" }));
   emit("<z> instant error", t, t, { track: "Components", color: "error" });
   await tick();
   stop();
@@ -412,7 +412,7 @@ test("the production version's setup functions do nothing", async () => {
 
 test("the public API is exactly what the README documents", async () => {
   const keys = async (path) => Object.keys(await import(path)).sort();
-  assert.deepEqual(await keys("../dist/index.js"), ["assignTrackGroup", "configure", "define", "getConfig", "timed", "trackElement"]);
+  assert.deepEqual(await keys("../dist/index.js"), ["assignTrackGroup", "configure", "define", "getConfig", "track", "trackElement"]);
   assert.deepEqual(await keys("../dist/adapters/lit.js"), ["trackLitUpdates"]);
   assert.deepEqual(await keys("../dist/adapters/stencil.js"), ["observeStencilProfile"]);
   assert.deepEqual(await keys("../dist/register.js"), []);
@@ -439,11 +439,11 @@ test("with no performance, PerformanceObserver or console, nothing is drawn and 
     delete globalThis.PerformanceObserver;
     delete globalThis.console;
     const { emit } = await import(${JSON.stringify(new URL("../dist/emit.js", import.meta.url).href)});
-    const { timed } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
+    const { track } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
     const { rerouteMeasures } = await import(${JSON.stringify(new URL("../dist/reroute.js", import.meta.url).href)});
     const { now } = await import(${JSON.stringify(new URL("../dist/emit.js", import.meta.url).href)});
     emit("x", 0, 1, { track: "Components" });
-    const out = [timed("x", { track: "Components" }, () => 7), now()];
+    const out = [track("x", () => 7), now()];
     rerouteMeasures(/x/, () => null)();
     process.stdout.write(JSON.stringify(out));
   `;
@@ -587,4 +587,56 @@ test("same contents, new object: gives up on deep, huge or throwing values", () 
   assert.equal(same(throwing(), throwing()), false);
   const shallow = () => ({ a: { b: { c: { d: 1 } } } });
   assert.equal(same(shallow(), shallow()), true, "within the depth limit");
+});
+
+test("exclude: tag prefixes and regular expressions, kept as a copy", async () => {
+  const { isExcluded } = await import("../dist/emit.js");
+  const list = ["Ex-", /-quiet$/g];
+  configure({ exclude: list });
+  assert.equal(isExcluded("ex-card"), true, "prefixes ignore case, like tag names");
+  assert.equal(isExcluded("my-quiet"), true);
+  assert.equal(isExcluded("my-quiet"), true, "a g flag does not make the second test fail");
+  assert.equal(isExcluded("my-card"), false);
+  list.push("my-");
+  assert.equal(isExcluded("my-card"), false, "changing the original array later has no effect");
+  const seen = getConfig().exclude;
+  assert.deepEqual(seen, ["Ex-", /-quiet$/g]);
+  seen.length = 0;
+  assert.equal(getConfig().exclude.length, 2, "getConfig returns a copy");
+  configure({ exclude: undefined });
+  assert.equal(isExcluded("ex-card"), true, "undefined leaves it alone");
+  for (const bad of [[""], [5], "ex-"]) {
+    assert.throws(() => configure({ exclude: bad }), TypeError);
+  }
+  assert.equal(isExcluded("ex-card"), true, "a rejected list changes nothing");
+  configure({ exclude: [] });
+  assert.equal(isExcluded("ex-card"), false);
+});
+
+test("exclude: Stencil timings for excluded tags are dropped", async () => {
+  configure({ minDuration: 0, exclude: ["ex-"] });
+  const { seen, stop } = collect();
+  const unwatch = observeAgain();
+  const t = performance.now() + 20000;
+  performance.measure("[Stencil] render() <ex-badge>", { start: t, end: t + 2 });
+  performance.measure("[Stencil] Load module for <ex-badge>", { start: t, end: t + 2 });
+  performance.measure("[Stencil] render() <kept-badge>", { start: t, end: t + 2 });
+  await tick();
+  unwatch();
+  stop();
+  configure({ minDuration: 0.05, exclude: [] });
+  const names = seen.map((e) => e.name.replace(/^\u200b/, ""));
+  assert.deepEqual(names.filter((n) => n.includes("badge")), ["kept-badge"]);
+});
+
+test("track puts bars on a \"Your code\" track unless told otherwise", async () => {
+  const { seen, stop } = collect();
+  const busy = (ms) => { const end = performance.now() + ms; while (performance.now() < end) {} };
+  assert.equal(track("<y> default", () => (busy(1), "a")), "a");
+  track("<y> custom", () => {}, { track: "Handlers", color: "secondary", tooltip: "hi" });
+  await tick();
+  stop();
+  const got = seen.filter((e) => e.name.includes("<y>")).map((e) => [e.name, e.detail.devtools.track, e.detail.devtools.color, e.detail.devtools.tooltipText]);
+  assert.deepEqual(got.filter(([n]) => n === "<y> custom"), [["<y> custom", "Handlers", "secondary", "hi"]]);
+  assert.deepEqual(got.filter(([n]) => n === "<y> default").map(([, t]) => t), ["Your code"]);
 });

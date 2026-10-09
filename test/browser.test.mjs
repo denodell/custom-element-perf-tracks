@@ -260,6 +260,14 @@ for (const lit of ["3", "2"]) {
       assert.deepEqual(result("noGetName"), ["old-browser connected"]);
     });
 
+    test("exclude leaves matching elements out completely, however they are tracked", { skip }, () => {
+      const r = result("excludeLeavesElementsOut");
+      assert.ok(r.bars.includes("kept-el connected"), JSON.stringify(r.bars));
+      assert.deepEqual(r.bars.filter((n) => /ex-|quiet|Render|Commit|Update|Event/.test(n)), [], "nothing for excluded elements");
+      assert.deepEqual(r.ran, ["ex-card", "ex-auto", "ex-manual", "kept-el"], "the elements still work");
+      assert.deepEqual(r.hooked, ["kept-el"], "excluded Lit classes are never set up for tracking");
+    });
+
     test("instrumentAll: broken hooks, other registries, double stops and other wrappers", { skip }, () => {
       assert.deepEqual(result("instrumentAllEdgeCases"), {
         defined: true,

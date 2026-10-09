@@ -1,23 +1,22 @@
-import type { Config, EmitOptions, TrackElementOptions } from "../index.js";
+import type { Config, TrackElementOptions, TrackOptions } from "../index.js";
 
 export type {
   Config,
-  ConsoleTask,
-  EmitOptions,
   LifecycleCallback,
   Properties,
   Strategy,
   TrackColor,
   TrackElementOptions,
+  TrackOptions,
 } from "../index.js";
 
 export function configure(_options: Partial<Config>): void {}
 
 export function getConfig(): Readonly<Config> {
-  return { enabled: false, trackGroup: "Web Components · Tuppence", strategy: "auto", minDuration: 0.05 };
+  return { enabled: false, trackGroup: "Web Components · Tuppence", strategy: "auto", minDuration: 0.05, exclude: [] };
 }
 
-export function timed<T>(_name: string, _options: EmitOptions, fn: () => T): T {
+export function track<T>(_name: string, fn: () => T, _options?: TrackOptions): T {
   return fn();
 }
 
