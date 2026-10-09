@@ -90,6 +90,7 @@ export const Tracks = {
   components: "Components",
   upgrade: "Upgrade",
   loading: "Loading",
+  code: "Your code",
 } as const;
 
 export type Properties = Array<[string, string]>;
@@ -189,12 +190,26 @@ function draw_(name: string, start: number, end: number, options: EmitOptions): 
   if (strategy !== "measure") performance.clearMeasures(measureName);
 }
 
+export interface TrackOptions {
+  /** The track the bar goes on. Default: "Your code". */
+  track?: string;
+  /** The DevTools group for this bar. Default: the `trackGroup` setting. */
+  trackGroup?: string;
+  /** One of DevTools' bar colors. Default: "primary". */
+  color?: TrackColor;
+  /** Rows shown when the bar is selected, as [label, value] pairs. */
+  properties?: Properties | (() => Properties | undefined);
+  /** Text shown on hover. Default: the bar's name. */
+  tooltip?: string;
+}
+
 /**
- * Runs `fn` and draws it as one bar, red with the error message if it throws.
- * Use it to time your own work, such as an event handler, alongside your components.
+ * Runs `fn` and adds it to the tracks as one bar, red with the error message if it throws.
+ * Use it for your own work, such as an event handler, so it shows up alongside your components.
  */
-export function timed<T>(name: string, options: EmitOptions, fn: () => T): T {
+export function track<T>(name: string, fn: () => T, options: TrackOptions = {}): T {
   if (!config.enabled || !hasPerformance) return fn();
+  const emitOptions: EmitOptions = { ...options, track: options.track ?? Tracks.code };
   const start = performance.now();
   let result: T | undefined;
   let error: unknown;
@@ -205,7 +220,7 @@ export function timed<T>(name: string, options: EmitOptions, fn: () => T): T {
   } catch (e) {
     error = e;
   }
-  emit(name, start, performance.now(), failed ? withError(options, error) : options);
+  emit(name, start, performance.now(), failed ? withError(emitOptions, error) : emitOptions);
   if (failed) throw error;
   return result as T;
 }

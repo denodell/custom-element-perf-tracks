@@ -1,13 +1,12 @@
 export {
   configure,
   getConfig,
-  timed,
+  track,
   type Config,
-  type ConsoleTask,
-  type EmitOptions,
   type Properties,
   type Strategy,
   type TrackColor,
+  type TrackOptions,
 } from "./emit.js";
 export { define, trackElement, type LifecycleCallback, type TrackElementOptions } from "./define.js";
 export { assignTrackGroup } from "./groups.js";

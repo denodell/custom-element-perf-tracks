@@ -101,19 +101,25 @@ class MyCounter extends LitElement {
 
 `trackElement(MyCard)` adds the lifecycle bars without defining the element. Call it before `customElements.define`.
 
-## Timing your own code
+## Tracking your own code
 
-`timed` draws a bar for any piece of work, such as an event handler. It's useful for components that do most of their work outside Lit or Stencil:
+`track` adds any piece of work to the tracks as a bar, such as an event handler. It's useful for components that do most of their work outside Lit or Stencil:
 
 ```js
-import { timed } from "tuppence";
+import { track } from "tuppence";
 
 input.addEventListener("input", () => {
-  timed("Filter list", { track: "Components" }, () => filterList(input.value));
+  track("Filter list", () => filterList(input.value));
 });
 ```
 
-It returns whatever the function returns. If the function throws, the bar is red and shows the error message.
+The bar goes on a **Your code** track. It returns whatever the function returns. If the function throws, the bar is red and shows the error message.
+
+An optional third argument sets the bar's `track`, `color`, `tooltip` and the `properties` shown when it's selected:
+
+```js
+track("Filter list", () => filterList(input.value), { track: "Search", color: "secondary" });
+```
 
 ## Stencil
 
@@ -184,7 +190,7 @@ Open `http://localhost:5173/demo/`, start recording in the Performance panel, cl
 - Tracks only show up in Chrome and Edge. Other browsers ignore them.
 - Anything under 0.1 ms is too short to draw.
 - Only synchronous work is timed.
-- Render details are for Lit and Stencil. Other custom elements get the Upgrade and lifecycle bars, and can use `timed` for the rest.
+- Render details are for Lit and Stencil. Other custom elements get the Upgrade and lifecycle bars, and can use `track` for the rest.
 - Lit components update one at a time, so their bars sit side by side rather than nested like React's. **Triggered by** shows which parent caused a child's update.
 
 ## Development
