@@ -39,8 +39,8 @@ async function recordDemo(query) {
 const clean = (name) => name.replace(/^\u200b/, "");
 
 function summarise(data) {
-  const group = data.extensionTrackData.find((g) => g.name === "Web Components");
-  assert.ok(group, `no "Web Components" group; got ${data.extensionTrackData.map((g) => g.name)}`);
+  const group = data.extensionTrackData.find((g) => g.name === "Web Components · Tuppence");
+  assert.ok(group, `no "Web Components · Tuppence" group; got ${data.extensionTrackData.map((g) => g.name)}`);
   return group.entriesByTrack;
 }
 

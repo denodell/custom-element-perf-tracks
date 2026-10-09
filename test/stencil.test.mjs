@@ -66,8 +66,8 @@ test("real Stencil timings become React-style bars", { skip, timeout: 180000 }, 
   const { analyzeEvents } = await import("@paulirish/trace_engine/analyze-trace.mjs");
   const { parsedTrace } = await analyzeEvents(JSON.parse(fs.readFileSync(trace, "utf8")).traceEvents);
   const data = parsedTrace.data?.ExtensionTraceData ?? parsedTrace.ExtensionTraceData;
-  const group = data.extensionTrackData.find((g) => g.name === "Web Components");
-  assert.ok(group, "no Web Components group");
+  const group = data.extensionTrackData.find((g) => g.name === "Web Components · Tuppence");
+  assert.ok(group, "no Web Components · Tuppence group");
   const tracks = group.entriesByTrack;
   const names = (t) => (tracks[t] ?? []).map((e) => e.name.replace(/^​/, ""));
   const count = (t, n) => names(t).filter((x) => x === n).length;

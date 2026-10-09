@@ -22,7 +22,7 @@ Import it at the top of your app's entry file, before any components load:
 import "tuppence/register";
 ```
 
-Record a profile in the [Performance panel](https://developer.chrome.com/docs/devtools/performance/overview) and you'll see a **Web Components** group with your components in it. If it's missing, turn on **Show custom tracks** in the panel's capture settings.
+Record a profile in the [Performance panel](https://developer.chrome.com/docs/devtools/performance/overview) and you'll see a **Web Components · Tuppence** group with your components in it. If it's missing, turn on **Show custom tracks** in the panel's capture settings.
 
 Tuppence is a development tool. Production builds use an empty version of the package, so none of it ships to your users. See [Production builds](#production-builds).
 

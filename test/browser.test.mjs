@@ -84,9 +84,9 @@ for (const lit of ["3", "2"]) {
       }
       assert.equal(r["Upgrade: beta-tip define"], "Beta");
       assert.equal(r["Components: beta-tip connected"], "Beta");
-      assert.equal(r["Upgrade: app-page define"], "Web Components");
-      assert.equal(r["Components: app-page connected"], "Web Components");
-      assert.equal(r.afterRemoving, "Web Components");
+      assert.equal(r["Upgrade: app-page define"], "Web Components · Tuppence");
+      assert.equal(r["Components: app-page connected"], "Web Components · Tuppence");
+      assert.equal(r.afterRemoving, "Web Components · Tuppence");
     });
 
     test("lifecycle callbacks go on the Components track, mount/unmount in React's warning color", { skip }, () => {
