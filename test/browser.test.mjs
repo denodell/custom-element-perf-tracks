@@ -48,12 +48,17 @@ for (const lit of ["3", "2"]) {
       const r = result("litNoChangeRenders");
       assert.equal(r.mount, null, "the first render is never marked");
       const noChanges = (text) => ({ name: "lit-waste (no changes)", color: "warning", noChanges: text, same: null });
+      const drop = ({ ms, ...rest }) => rest;
+      for (const k of ["newArray", "newArrays", "newNested"]) r[k] = drop(r[k]);
       assert.deepEqual(r.newArray, noChanges("items was set to a new array with the same values"));
       assert.deepEqual(r.newArrays, noChanges("items and tags were set to new arrays with the same values"));
       assert.deepEqual(
         r.newNested,
         noChanges("options was set to a new object with the same values, and when to a new date with the same value"),
       );
+      // Quick ones keep the name but stay blue; only slower ones turn yellow.
+      assert.equal(r.quick.name, "lit-waste (no changes)");
+      assert.equal(r.quick.color, r.quick.ms < 0.5 ? "primary-light" : "warning", `took ${r.quick.ms} ms`);
       assert.equal(r.mixed.noChanges, null);
       assert.equal(r.mixed.same, "items");
       assert.equal(r.mixed.name, "lit-waste");

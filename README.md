@@ -70,7 +70,7 @@ assignTrackGroup("acme-", "Acme Design System");
 | Bar | What it shows |
 | --- | --- |
 | **my-element** (blue) | The render. Click it to see **Changed Props** with old and new values, how many **Changes batched** into the update, and which parent it was **Triggered by**. |
-| **my-element (no changes)** (yellow) | The component rendered, but nothing had changed. A property got a new array, object or date with the same values, often from passing `[...]` or `{...}` inline. |
+| **my-element (no changes)** | The component rendered, but nothing had changed. A property got a new array, object or date with the same values, often from passing `[...]` or `{...}` inline. Yellow when the render took 0.5 ms or more. |
 | **my-element** (purple) | `firstUpdated()` and `updated()`. |
 | **Mount** | A component's first update. |
 | **my-element connected** | Lifecycle callbacks: `connected`, `disconnected`, `attributeChanged` and `adopted`. |

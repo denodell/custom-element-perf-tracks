@@ -435,7 +435,7 @@ class LitUpdateTracker implements ReactiveController {
     emit(noChanges ? `${tag} (no changes)` : tag, start, renderEnd, {
       track: Tracks.components,
       trackGroup,
-      color: noChanges ? "warning" : renderColor(renderEnd - start),
+      color: noChanges && renderColor(renderEnd - start) !== "primary-light" ? "warning" : renderColor(renderEnd - start),
       task,
       tooltip: noChanges ? `${tag}: no changes (${copies})` : undefined,
       properties: details,
