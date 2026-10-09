@@ -588,3 +588,43 @@ test("same contents, new object: gives up on deep, huge or throwing values", () 
   const shallow = () => ({ a: { b: { c: { d: 1 } } } });
   assert.equal(same(shallow(), shallow()), true, "within the depth limit");
 });
+
+test("exclude: tag prefixes and regular expressions, kept as a copy", async () => {
+  const { isExcluded } = await import("../dist/emit.js");
+  const list = ["Ex-", /-quiet$/g];
+  configure({ exclude: list });
+  assert.equal(isExcluded("ex-card"), true, "prefixes ignore case, like tag names");
+  assert.equal(isExcluded("my-quiet"), true);
+  assert.equal(isExcluded("my-quiet"), true, "a g flag does not make the second test fail");
+  assert.equal(isExcluded("my-card"), false);
+  list.push("my-");
+  assert.equal(isExcluded("my-card"), false, "changing the original array later has no effect");
+  const seen = getConfig().exclude;
+  assert.deepEqual(seen, ["Ex-", /-quiet$/g]);
+  seen.length = 0;
+  assert.equal(getConfig().exclude.length, 2, "getConfig returns a copy");
+  configure({ exclude: undefined });
+  assert.equal(isExcluded("ex-card"), true, "undefined leaves it alone");
+  for (const bad of [[""], [5], "ex-"]) {
+    assert.throws(() => configure({ exclude: bad }), TypeError);
+  }
+  assert.equal(isExcluded("ex-card"), true, "a rejected list changes nothing");
+  configure({ exclude: [] });
+  assert.equal(isExcluded("ex-card"), false);
+});
+
+test("exclude: Stencil timings for excluded tags are dropped", async () => {
+  configure({ minDuration: 0, exclude: ["ex-"] });
+  const { seen, stop } = collect();
+  const unwatch = observeAgain();
+  const t = performance.now() + 20000;
+  performance.measure("[Stencil] render() <ex-badge>", { start: t, end: t + 2 });
+  performance.measure("[Stencil] Load module for <ex-badge>", { start: t, end: t + 2 });
+  performance.measure("[Stencil] render() <kept-badge>", { start: t, end: t + 2 });
+  await tick();
+  unwatch();
+  stop();
+  configure({ minDuration: 0.05, exclude: [] });
+  const names = seen.map((e) => e.name.replace(/^\u200b/, ""));
+  assert.deepEqual(names.filter((n) => n.includes("badge")), ["kept-badge"]);
+});

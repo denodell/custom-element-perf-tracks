@@ -7,6 +7,7 @@ import {
   effectColor,
   emit,
   isEnabled,
+  isExcluded,
   minDuration,
   now,
   preview,
@@ -453,7 +454,7 @@ class LitUpdateTracker implements ReactiveController {
 
 /** Tracks a Lit element's updates. Call it from the element's constructor. */
 export function trackLitUpdates(host: ReactiveElement): void {
-  if (!isEnabled()) return;
+  if (!isEnabled() || isExcluded(labelFor(host))) return;
   const h = host as Host & { [TRACKED]?: true };
   if (h[TRACKED]) return;
   h[TRACKED] = true;
@@ -461,7 +462,6 @@ export function trackLitUpdates(host: ReactiveElement): void {
   new LitUpdateTracker(h);
 }
 
-/** Tracks every Lit element defined from now on. Returns a function that stops it. */
 function listNames(names: string[]): string {
   return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
 }
