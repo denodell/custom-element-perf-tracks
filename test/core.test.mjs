@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PerformanceObserver } from "node:perf_hooks";
-import { configure, getConfig, emit, timed, rerouteMeasures } from "../dist/index.js";
+import { configure, getConfig, timed } from "../dist/index.js";
+// Internal pieces, tested directly.
+import { emit } from "../dist/emit.js";
+import { rerouteMeasures } from "../dist/reroute.js";
 import { observeStencilProfile } from "../dist/adapters/stencil.js";
 
 function collect() {
@@ -287,18 +290,16 @@ test("the production version has exactly the same exports, and does nothing", as
   assert.deepEqual(Object.keys(prod).sort(), Object.keys(dev).sort());
   assert.deepEqual(Object.keys(prodLit).sort(), Object.keys(devLit).sort());
   assert.deepEqual(Object.keys(prodStencil).sort(), Object.keys(devStencil).sort());
-  assert.deepEqual(prod.Tracks, dev.Tracks);
   assert.deepEqual(Object.keys(prod.getConfig()).sort(), Object.keys(dev.getConfig()).sort());
+  assert.equal(prod.getConfig().trackGroup, "Web Components · Tuppence");
 
   const { seen, stop } = collect();
   assert.equal(prod.timed("x", { track: "Components" }, () => 5), 5);
-  prod.emit("x", 0, 1, { track: "Components" });
   prod.configure({ enabled: true });
   assert.equal(prod.getConfig().enabled, false);
-  assert.equal(typeof prod.rerouteMeasures(/x/, () => null), "function");
   assert.equal(typeof prodStencil.observeStencilProfile(), "function");
   prodLit.trackLitUpdates({});
-  prod.instrumentElement(class {});
+  prod.trackElement(class {});
   await tick();
   stop();
   assert.equal(seen.length, 0);
@@ -404,16 +405,22 @@ test("Stencil: more than eight overlapping loads share the last Loading row", as
 
 test("the production version's setup functions do nothing", async () => {
   const prod = await import("../dist/production/index.js");
-  const prodLit = await import("../dist/production/adapters/lit.js");
-  const stop = prod.instrumentAll({ onDefine: () => assert.fail("called") });
-  assert.equal(typeof stop, "function");
-  stop();
-  assert.equal(typeof prodLit.trackAllLitElements(), "function");
-  prodLit.trackAllLitElements()();
+  const undo = prod.assignTrackGroup("x-", "X");
+  assert.equal(typeof undo, "function");
+  undo();
+});
+
+test("the public API is exactly what the README documents", async () => {
+  const keys = async (path) => Object.keys(await import(path)).sort();
+  assert.deepEqual(await keys("../dist/index.js"), ["assignTrackGroup", "configure", "define", "getConfig", "timed", "trackElement"]);
+  assert.deepEqual(await keys("../dist/adapters/lit.js"), ["trackLitUpdates"]);
+  assert.deepEqual(await keys("../dist/adapters/stencil.js"), ["observeStencilProfile"]);
+  assert.deepEqual(await keys("../dist/register.js"), []);
 });
 
 test("without customElements (Node, some SSR), the element helpers do nothing harmful", async () => {
-  const { instrumentAll, instrumentElement } = await import("../dist/index.js");
+  const { trackElement } = await import("../dist/index.js");
+  const { instrumentAll } = await import("../dist/define.js");
   const { labelFor } = await import("../dist/define.js");
   assert.equal(typeof customElements, "undefined");
   const stop = instrumentAll();
@@ -421,7 +428,7 @@ test("without customElements (Node, some SSR), the element helpers do nothing ha
   stop();
   assert.equal(labelFor({ constructor: class {}, localName: "x-fallback" }), "x-fallback");
   class Plain { connectedCallback() { return "ran"; } }
-  instrumentElement(Plain);
+  trackElement(Plain);
   assert.equal(new Plain().connectedCallback.call({ constructor: Plain, localName: "x-plain" }), "ran");
 });
 
@@ -431,7 +438,9 @@ test("with no performance, PerformanceObserver or console, nothing is drawn and 
     delete globalThis.performance;
     delete globalThis.PerformanceObserver;
     delete globalThis.console;
-    const { emit, timed, rerouteMeasures } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
+    const { emit } = await import(${JSON.stringify(new URL("../dist/emit.js", import.meta.url).href)});
+    const { timed } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
+    const { rerouteMeasures } = await import(${JSON.stringify(new URL("../dist/reroute.js", import.meta.url).href)});
     const { now } = await import(${JSON.stringify(new URL("../dist/emit.js", import.meta.url).href)});
     emit("x", 0, 1, { track: "Components" });
     const out = [timed("x", { track: "Components" }, () => 7), now()];
@@ -450,7 +459,8 @@ test("with no console, the timestamp strategy falls back to performance.measure"
     const seen = [];
     new PerformanceObserver((l) => seen.push(...l.getEntries().map((e) => e.name))).observe({ entryTypes: ["measure"] });
     delete globalThis.console;
-    const { emit, configure } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
+    const { emit } = await import(${JSON.stringify(new URL("../dist/emit.js", import.meta.url).href)});
+    const { configure } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
     configure({ strategy: "timestamp" });
     emit("no-console", performance.now() - 1, performance.now(), { track: "Components" });
     setTimeout(() => log(JSON.stringify(seen)), 20);

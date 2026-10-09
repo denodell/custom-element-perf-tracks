@@ -84,11 +84,11 @@ Bars get darker the longer they take, using React's thresholds. Errors show as r
 If you'd rather not track everything, skip the one-line setup and use these instead:
 
 ```js
-import { definePerf } from "tuppence";
+import { define } from "tuppence";
 import { trackLitUpdates } from "tuppence/lit";
 
 // Instead of customElements.define:
-definePerf("my-card", MyCard);
+define("my-card", MyCard);
 
 // In a Lit element's constructor:
 class MyCounter extends LitElement {
@@ -99,7 +99,21 @@ class MyCounter extends LitElement {
 }
 ```
 
-`instrumentElement(MyCard)` adds the lifecycle bars without defining the element. Call it before `customElements.define`.
+`trackElement(MyCard)` adds the lifecycle bars without defining the element. Call it before `customElements.define`.
+
+## Timing your own code
+
+`timed` draws a bar for any piece of work, such as an event handler. It's useful for components that do most of their work outside Lit or Stencil:
+
+```js
+import { timed } from "tuppence";
+
+input.addEventListener("input", () => {
+  timed("Filter list", { track: "Components" }, () => filterList(input.value));
+});
+```
+
+It returns whatever the function returns. If the function throws, the bar is red and shows the error message.
 
 ## Stencil
 
@@ -141,7 +155,7 @@ configure({
 });
 ```
 
-Call `configure` before your elements are defined.
+Call `configure` before your elements are defined. `getConfig()` returns the current settings.
 
 `strategy` controls how bars are drawn:
 
@@ -167,7 +181,7 @@ Open `http://localhost:5173/demo/`, start recording in the Performance panel, cl
 - Tracks only show up in Chrome and Edge. Other browsers ignore them.
 - Anything under 0.1 ms is too short to draw.
 - Only synchronous work is timed.
-- Render details are for Lit and Stencil. Other custom elements get the Upgrade and lifecycle bars.
+- Render details are for Lit and Stencil. Other custom elements get the Upgrade and lifecycle bars, and can use `timed` for the rest.
 - Lit components update one at a time, so their bars sit side by side rather than nested like React's. **Triggered by** shows which parent caused a child's update.
 
 ## Development

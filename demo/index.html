@@ -49,7 +49,7 @@
 
   <section>
     <h2>Plain custom element</h2>
-    <p class="track">Upgrade and Components tracks, via <code>definePerf</code></p>
+    <p class="track">Upgrade and Components tracks, via <code>define</code></p>
     <div class="buttons">
       <button id="v-define">Define (upgrades 20 elements)</button>
       <button id="v-add">Add one</button>
@@ -81,7 +81,7 @@
 </main>
 
 <script type="module">
-  import { definePerf, configure } from "../dist/index.js";
+  import { define, configure } from "../dist/index.js";
   import { observeStencilProfile } from "../dist/adapters/stencil.js";
   import { trackLitUpdates } from "../dist/adapters/lit.js";
   import { LitElement, html } from "lit";
@@ -105,7 +105,7 @@
   }
   document.getElementById("v-define").onclick = (e) => {
     if (customElements.get("demo-card")) return;
-    definePerf("demo-card", DemoCard);
+    define("demo-card", DemoCard);
     e.target.disabled = true;
   };
   document.getElementById("v-add").onclick = () => {

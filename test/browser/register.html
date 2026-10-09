@@ -24,7 +24,7 @@
 <auto-plain></auto-plain><auto-plain></auto-plain><auto-plain></auto-plain>
 <script type="module" src="/dist/register.js"></script>
 <script type="module">
-  import { configure, definePerf } from "/dist/index.js";
+  import { configure, define } from "/dist/index.js";
   import { LitElement, html } from "lit";
 
   configure({ strategy: "measure", minDuration: 0 });
@@ -91,7 +91,7 @@
     async definePerfIsNotDoubled() {
       class Explicit extends HTMLElement { connectedCallback() { work(0.5); } }
       const got = await collect(() => {
-        definePerf("auto-explicit", Explicit);
+        define("auto-explicit", Explicit);
         document.body.append(document.createElement("auto-explicit"));
       });
       return { upgrade: names(on("Upgrade", got)), components: names(on("Components", got)) };
