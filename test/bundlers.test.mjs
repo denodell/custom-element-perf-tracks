@@ -10,13 +10,13 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MARKERS = ["track-entry", "Elements upgraded", "Changes batched", "Cascading Update", "PerformanceObserver"];
 
 const APP = `
-import { definePerf, configure } from "tuppence";
+import { define, configure } from "tuppence";
 import { trackLitUpdates } from "tuppence/lit";
 import { observeStencilProfile } from "tuppence/stencil";
 
 configure({ trackGroup: "My App" });
 class MyCard extends HTMLElement {}
-definePerf("my-card", MyCard);
+define("my-card", MyCard);
 observeStencilProfile();
 window.track = trackLitUpdates;
 `;

@@ -322,7 +322,7 @@ for (const lit of ["3", "2"]) {
       assert.deepEqual(result("turnedOffAfterDefining"), { calls: 1, bars: 0 });
     });
 
-    test("instrumentElement's callbacks option times only those callbacks", { skip }, () => {
+    test("trackElement's callbacks option times only those callbacks", { skip }, () => {
       assert.deepEqual(result("onlyChosenCallbacks"), ["picky-el connected"]);
     });
 
@@ -425,7 +425,7 @@ for (const lit of ["3", "2"]) {
       assert.deepEqual(result("subclassesTrackedOnce"), ["auto-sub"]);
     });
 
-    test("definePerf still works, without doubling bars", { skip }, () => {
+    test("define still works, without doubling bars", { skip }, () => {
       const r = result("definePerfIsNotDoubled");
       assert.ok(r.upgrade.length <= 1, r.upgrade.join());
       assert.deepEqual(r.components, ["auto-explicit connected"]);

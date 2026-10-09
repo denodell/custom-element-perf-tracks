@@ -15,7 +15,7 @@ import {
   type ConsoleTask,
   type Properties,
 } from "../emit.js";
-import { instrumentAll, labelFor } from "../define.js";
+import { labelFor } from "../define.js";
 import { groupFor } from "../groups.js";
 import { kindOf, sameContentsNewObject, type Kind } from "../compare.js";
 
@@ -462,20 +462,6 @@ export function trackLitUpdates(host: ReactiveElement): void {
 }
 
 /** Tracks every Lit element defined from now on. Returns a function that stops it. */
-export function trackAllLitElements(): () => void {
-  return instrumentAll({
-    onDefine(ctor) {
-      const lit = ctor as unknown as {
-        addInitializer?: (init: (el: ReactiveElement) => void) => void;
-        prototype: { performUpdate?: unknown };
-      };
-      if (typeof lit.addInitializer === "function" && typeof lit.prototype.performUpdate === "function") {
-        lit.addInitializer((el) => trackLitUpdates(el));
-      }
-    },
-  });
-}
-
 function listNames(names: string[]): string {
   return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
 }

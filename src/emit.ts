@@ -70,11 +70,17 @@ export interface ConsoleTask {
 }
 
 export interface EmitOptions {
+  /** The track the bar goes on, such as "Components". */
   track: string;
+  /** The DevTools group for this bar. Default: the `trackGroup` setting. */
   trackGroup?: string;
+  /** One of DevTools' bar colors. Default: "primary". */
   color?: TrackColor;
+  /** Rows shown when the bar is selected, as [label, value] pairs. */
   properties?: Properties | (() => Properties | undefined);
+  /** Text shown on hover. Default: the bar's name. */
   tooltip?: string;
+  /** A `console.createTask` task, so DevTools shows where the work started. */
   task?: ConsoleTask | null;
 }
 
@@ -154,7 +160,10 @@ function draw_(name: string, start: number, end: number, options: EmitOptions): 
   if (strategy !== "measure") performance.clearMeasures(measureName);
 }
 
-/** Runs `fn` and draws it as one bar, red with the error message if it throws. */
+/**
+ * Runs `fn` and draws it as one bar, red with the error message if it throws.
+ * Use it to time your own work, such as an event handler, alongside your components.
+ */
 export function timed<T>(name: string, options: EmitOptions, fn: () => T): T {
   if (!config.enabled || !hasPerformance) return fn();
   const start = performance.now();
