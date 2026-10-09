@@ -4,6 +4,7 @@ import {
   Tracks,
   emit,
   isEnabled,
+  isExcluded,
   minDuration,
   now,
   preview,
@@ -40,7 +41,8 @@ const inProgress = new WeakMap<Element, Set<LifecycleCallback>>();
 
 let upgrading: { ctor: CustomElementConstructor; count: number } | null = null;
 
-export interface InstrumentOptions {
+export interface TrackElementOptions {
+  /** Which lifecycle callbacks to time. Default: all four. */
   callbacks?: readonly LifecycleCallback[];
 }
 
@@ -54,14 +56,14 @@ export function labelFor(el: Element): string {
 }
 
 /** Times a class's lifecycle callbacks. Call it before the class is defined. */
-export function instrumentElement(
+export function trackElement(
   ctor: CustomElementConstructor,
-  options: InstrumentOptions = {},
+  options: TrackElementOptions = {},
 ): void {
   instrument(ctor, options);
 }
 
-function instrument(ctor: CustomElementConstructor, options: InstrumentOptions): () => void {
+function instrument(ctor: CustomElementConstructor, options: TrackElementOptions): () => void {
   const nothing = () => {};
   if (!isEnabled()) return nothing;
   const proto = ctor.prototype as Record<PropertyKey, unknown>;
@@ -84,7 +86,7 @@ function instrument(ctor: CustomElementConstructor, options: InstrumentOptions):
 
     const wrapped = function (this: HTMLElement, ...args: unknown[]): unknown {
       const call = () => (original as (...a: unknown[]) => unknown).apply(this, args);
-      if (!isEnabled()) return call();
+      if (!isEnabled() || isExcluded(labelFor(this))) return call();
 
       let active = inProgress.get(this);
 // When a subclass and its base class are both wrapped, the outer wrapper draws the one bar.
@@ -150,24 +152,28 @@ type Define = (name: string, ctor: CustomElementConstructor, options?: ElementDe
 
 let nativeDefine: Define | null = null;
 
-function define(name: string, ctor: CustomElementConstructor, options?: ElementDefinitionOptions): void {
+function defineNative(name: string, ctor: CustomElementConstructor, options?: ElementDefinitionOptions): void {
   if (nativeDefine) nativeDefine(name, ctor, options);
   else customElements.define(name, ctor, options);
 }
 
 /** `customElements.define`, plus lifecycle bars and an Upgrade bar for the define itself. */
-export function definePerf(
+export function define(
   tagName: string,
   ctor: CustomElementConstructor,
-  options?: ElementDefinitionOptions & InstrumentOptions,
+  options?: ElementDefinitionOptions & TrackElementOptions,
 ): void {
   if (customElements.get(tagName) || customElements.getName?.(ctor)) {
-    define(tagName, ctor, options);
+    defineNative(tagName, ctor, options);
+    return;
+  }
+  if (isExcluded(tagName)) {
+    defineNative(tagName, ctor, options);
     return;
   }
   const restore = instrument(ctor, options ?? {});
   if (!isEnabled()) {
-    define(tagName, ctor, options);
+    defineNative(tagName, ctor, options);
     return;
   }
 
@@ -179,7 +185,7 @@ export function definePerf(
   const start = now();
   let failed = true;
   try {
-    define(tagName, ctor, options);
+    defineNative(tagName, ctor, options);
     failed = false;
   } catch (error) {
     restore();
@@ -194,6 +200,8 @@ export function definePerf(
     });
   }
 }
+
+const defineAndTrack = define;
 
 export interface InstrumentAllOptions {
   onDefine?: (ctor: CustomElementConstructor, name: string) => void;
@@ -221,13 +229,13 @@ export function instrumentAll(options: InstrumentAllOptions = {}): () => void {
       ctor: CustomElementConstructor,
       opts?: ElementDefinitionOptions,
     ): void {
-      if (this !== registry) return previous.call(this, name, ctor, opts);
+      if (this !== registry || isExcluded(name)) return previous.call(this, name, ctor, opts);
       for (const h of defineHooks) {
         try {
           h(ctor, name);
         } catch {}
       }
-      definePerf(name, ctor, opts);
+      defineAndTrack(name, ctor, opts);
     };
     registry.define = patched;
     unpatch = () => {

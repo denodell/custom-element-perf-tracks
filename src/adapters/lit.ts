@@ -7,6 +7,7 @@ import {
   effectColor,
   emit,
   isEnabled,
+  isExcluded,
   minDuration,
   now,
   preview,
@@ -15,9 +16,9 @@ import {
   type ConsoleTask,
   type Properties,
 } from "../emit.js";
-import { instrumentAll, labelFor } from "../define.js";
+import { labelFor } from "../define.js";
 import { groupFor } from "../groups.js";
-import { sameContentsNewObject } from "../compare.js";
+import { kindOf, sameContentsNewObject, type Kind } from "../compare.js";
 
 interface Protected {
   performUpdate(): unknown;
@@ -370,12 +371,13 @@ class LitUpdateTracker implements ReactiveController {
             .filter(([, old, value]) => value !== UNREADABLE && sameContentsNewObject(old, value))
             .map(([name]) => name)
         : [];
-    const wasted = sameContents.length > 0 && sameContents.length === info.changed.length && !info.manual;
+    const noChanges = sameContents.length > 0 && sameContents.length === info.changed.length && !info.manual;
+    const copies = noChanges ? describeCopies(info.changed) : "";
 
     const details = (): Properties => {
       const rows: Properties = [];
-      if (wasted) rows.push(["Wasted render", "no property's contents changed"]);
-      if (sameContents.length) rows.push(["Same contents, new object", sameContents.join(", ")]);
+      if (noChanges) rows.push(["No changes", copies]);
+      else if (sameContents.length) rows.push(["Same contents, new object", sameContents.join(", ")]);
       if (info.triggeredBy) rows.push(["Triggered by", info.triggeredBy]);
       if (info.changes > 1) rows.push(["Changes batched", String(info.changes)]);
       if (info.manual && info.changed.length === 0) rows.push(["Update requested", "requestUpdate()"]);
@@ -431,12 +433,12 @@ class LitUpdateTracker implements ReactiveController {
       return;
     }
     if (first) emit("Mount", start, end, { track: Tracks.components, trackGroup, color: "warning", task });
-    emit(tag, start, renderEnd, {
+    emit(noChanges ? `${tag} (no changes)` : tag, start, renderEnd, {
       track: Tracks.components,
       trackGroup,
-      color: wasted ? "warning" : renderColor(renderEnd - start),
+      color: noChanges && renderColor(renderEnd - start) !== "primary-light" ? "warning" : renderColor(renderEnd - start),
       task,
-      tooltip: wasted ? `${tag}: wasted render (${sameContents.join(", ")}: new object, same contents)` : undefined,
+      tooltip: noChanges ? `${tag}: no changes (${copies})` : undefined,
       properties: details,
     });
     if (frame.effectsStart !== null && end - frame.effectsStart >= minDuration()) {
@@ -452,7 +454,7 @@ class LitUpdateTracker implements ReactiveController {
 
 /** Tracks a Lit element's updates. Call it from the element's constructor. */
 export function trackLitUpdates(host: ReactiveElement): void {
-  if (!isEnabled()) return;
+  if (!isEnabled() || isExcluded(labelFor(host))) return;
   const h = host as Host & { [TRACKED]?: true };
   if (h[TRACKED]) return;
   h[TRACKED] = true;
@@ -460,17 +462,24 @@ export function trackLitUpdates(host: ReactiveElement): void {
   new LitUpdateTracker(h);
 }
 
-/** Tracks every Lit element defined from now on. Returns a function that stops it. */
-export function trackAllLitElements(): () => void {
-  return instrumentAll({
-    onDefine(ctor) {
-      const lit = ctor as unknown as {
-        addInitializer?: (init: (el: ReactiveElement) => void) => void;
-        prototype: { performUpdate?: unknown };
-      };
-      if (typeof lit.addInitializer === "function" && typeof lit.prototype.performUpdate === "function") {
-        lit.addInitializer((el) => trackLitUpdates(el));
-      }
-    },
+function listNames(names: string[]): string {
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+}
+
+/** "items was set to a new array with the same values", grouped by kind of value. */
+function describeCopies(changed: UpdateInfo["changed"]): string {
+  const byKind = new Map<Kind, string[]>();
+  for (const [name, , value] of changed) {
+    const kind = kindOf(value)!;
+    let names = byKind.get(kind);
+    if (!names) byKind.set(kind, (names = []));
+    names.push(name);
+  }
+  const clauses = [...byKind].map(([kind, names], i) => {
+    const many = names.length > 1;
+    const what = many ? `new ${kind}s` : `a new ${kind}`;
+    const same = kind === "date" && !many ? "the same value" : "the same values";
+    return `${listNames(names)}${i === 0 ? (many ? " were set" : " was set") : ""} to ${what} with ${same}`;
   });
+  return clauses.length > 1 ? `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}` : clauses[0];
 }

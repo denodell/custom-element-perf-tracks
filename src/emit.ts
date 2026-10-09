@@ -22,25 +22,54 @@ export interface Config {
   strategy: Strategy;
   /** Callbacks shorter than this many milliseconds are left undrawn. */
   minDuration: number;
+  /**
+   * Elements to leave out completely. A string matches the start of a tag name,
+   * like "sp-icon-". A regular expression is tested against the whole tag name.
+   */
+  exclude: ReadonlyArray<string | RegExp>;
 }
 
 const config: Config = {
   enabled: true,
-  trackGroup: "Web Components",
+  trackGroup: "Web Components · Tuppence",
   strategy: "auto",
   minDuration: 0.05,
+  exclude: [],
 };
+
+let excluded: Array<(tag: string) => boolean> = [];
 
 /** Changes settings. Keys set to `undefined` are ignored. */
 export function configure(options: Partial<Config>): void {
+  if (options.exclude !== undefined) excluded = compileExclude(options.exclude);
   for (const [key, value] of Object.entries(options)) {
     if (value !== undefined) (config as unknown as Record<string, unknown>)[key] = value;
   }
+  if (options.exclude !== undefined) config.exclude = [...options.exclude];
+}
+
+function compileExclude(list: ReadonlyArray<string | RegExp>): Array<(tag: string) => boolean> {
+  if (!Array.isArray(list)) throw new TypeError("configure: exclude must be an array");
+  return list.map((item) => {
+    if (typeof item === "string" && item !== "") {
+      const prefix = item.toLowerCase();
+      return (tag: string) => tag.startsWith(prefix);
+    }
+    if (item instanceof RegExp) {
+      const re = new RegExp(item.source, item.flags.replace(/[gy]/g, ""));
+      return (tag: string) => re.test(tag);
+    }
+    throw new TypeError("configure: exclude entries must be tag prefixes or regular expressions");
+  });
 }
 
 /** Returns a copy of the current settings. */
 export function getConfig(): Readonly<Config> {
-  return { ...config };
+  return { ...config, exclude: [...config.exclude] };
+}
+
+export function isExcluded(tag: string): boolean {
+  return excluded.length > 0 && excluded.some((match) => match(tag));
 }
 
 export function isEnabled(): boolean {
@@ -61,6 +90,7 @@ export const Tracks = {
   components: "Components",
   upgrade: "Upgrade",
   loading: "Loading",
+  code: "Your code",
 } as const;
 
 export type Properties = Array<[string, string]>;
@@ -70,11 +100,17 @@ export interface ConsoleTask {
 }
 
 export interface EmitOptions {
+  /** The track the bar goes on, such as "Components". */
   track: string;
+  /** The DevTools group for this bar. Default: the `trackGroup` setting. */
   trackGroup?: string;
+  /** One of DevTools' bar colors. Default: "primary". */
   color?: TrackColor;
+  /** Rows shown when the bar is selected, as [label, value] pairs. */
   properties?: Properties | (() => Properties | undefined);
+  /** Text shown on hover. Default: the bar's name. */
   tooltip?: string;
+  /** A `console.createTask` task, so DevTools shows where the work started. */
   task?: ConsoleTask | null;
 }
 
@@ -154,9 +190,26 @@ function draw_(name: string, start: number, end: number, options: EmitOptions): 
   if (strategy !== "measure") performance.clearMeasures(measureName);
 }
 
-/** Runs `fn` and draws it as one bar, red with the error message if it throws. */
-export function timed<T>(name: string, options: EmitOptions, fn: () => T): T {
+export interface TrackOptions {
+  /** The track the bar goes on. Default: "Your code". */
+  track?: string;
+  /** The DevTools group for this bar. Default: the `trackGroup` setting. */
+  trackGroup?: string;
+  /** One of DevTools' bar colors. Default: "primary". */
+  color?: TrackColor;
+  /** Rows shown when the bar is selected, as [label, value] pairs. */
+  properties?: Properties | (() => Properties | undefined);
+  /** Text shown on hover. Default: the bar's name. */
+  tooltip?: string;
+}
+
+/**
+ * Runs `fn` and adds it to the tracks as one bar, red with the error message if it throws.
+ * Use it for your own work, such as an event handler, so it shows up alongside your components.
+ */
+export function track<T>(name: string, fn: () => T, options: TrackOptions = {}): T {
   if (!config.enabled || !hasPerformance) return fn();
+  const emitOptions: EmitOptions = { ...options, track: options.track ?? Tracks.code };
   const start = performance.now();
   let result: T | undefined;
   let error: unknown;
@@ -167,7 +220,7 @@ export function timed<T>(name: string, options: EmitOptions, fn: () => T): T {
   } catch (e) {
     error = e;
   }
-  emit(name, start, performance.now(), failed ? withError(options, error) : options);
+  emit(name, start, performance.now(), failed ? withError(emitOptions, error) : emitOptions);
   if (failed) throw error;
   return result as T;
 }

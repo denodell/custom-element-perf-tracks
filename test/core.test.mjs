@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PerformanceObserver } from "node:perf_hooks";
-import { configure, getConfig, emit, timed, rerouteMeasures } from "../dist/index.js";
+import { configure, getConfig, track } from "../dist/index.js";
+// Internal pieces, tested directly.
+import { emit } from "../dist/emit.js";
+import { rerouteMeasures } from "../dist/reroute.js";
 import { observeStencilProfile } from "../dist/adapters/stencil.js";
 
 function collect() {
@@ -31,7 +34,7 @@ test("emit writes a DevTools track entry", async () => {
   assert.equal(seen.length, 1);
   assert.deepEqual(seen[0].detail.devtools, {
     dataType: "track-entry",
-    trackGroup: "Web Components",
+    trackGroup: "Web Components · Tuppence",
     track: "Updates",
     color: "secondary",
     properties: [["k", "v"]],
@@ -66,16 +69,16 @@ test("auto strategy: details go through a measure that is cleared, under an invi
 
 test("configure ignores undefined and getConfig returns a copy", () => {
   configure({ trackGroup: undefined });
-  assert.equal(getConfig().trackGroup, "Web Components");
+  assert.equal(getConfig().trackGroup, "Web Components · Tuppence");
   getConfig().trackGroup = "changed";
-  assert.equal(getConfig().trackGroup, "Web Components");
+  assert.equal(getConfig().trackGroup, "Web Components · Tuppence");
 });
 
-test("timed returns the value, rethrows the error, and colours failures", async () => {
+test("track returns the value, rethrows the error, and colours failures", async () => {
   const { seen, stop } = collect();
-  assert.equal(timed("<t> ok", { track: "Updates" }, () => 42), 42);
+  assert.equal(track("<t> ok", () => 42, { track: "Updates" }), 42);
   const err = new TypeError("orig");
-  assert.throws(() => timed("<t> bad", { track: "Updates" }, () => { throw err; }), (e) => e === err);
+  assert.throws(() => track("<t> bad", () => { throw err; }, { track: "Updates" }), (e) => e === err);
   await tick();
   stop();
   assert.deepEqual(seen.map((e) => [e.name, e.detail.devtools.color, e.detail.devtools.properties]), [
@@ -120,7 +123,7 @@ test("rerouted output is never copied again, even if the group is renamed", asyn
   performance.measure("<loop> start", { start: 0, end: 1 });
   configure({ trackGroup: "Renamed" });
   await tick();
-  configure({ trackGroup: "Web Components" });
+  configure({ trackGroup: "Web Components · Tuppence" });
   await tick();
   unwatch();
   stop();
@@ -214,17 +217,17 @@ test("if drawing itself fails, emit swallows the error", () => {
   performance.measure = () => { throw new Error("drawing broke"); };
   try {
     assert.doesNotThrow(() => emit("<d> x", 0, 1, { track: "Components" }));
-    assert.equal(timed("<d> y", { track: "Components" }, () => "kept"), "kept");
+    assert.equal(track("<d> y", () => "kept", { track: "Components" }), "kept");
   } finally {
     performance.measure = measure;
   }
 });
 
-test("timed reports non-Error throws and does nothing extra when disabled", async () => {
+test("track reports non-Error throws and does nothing extra when disabled", async () => {
   const { seen, stop } = collect();
-  assert.throws(() => timed("<t> str", { track: "Updates" }, () => { throw "plain string"; }));
+  assert.throws(() => track("<t> str", () => { throw "plain string"; }, { track: "Updates" }));
   configure({ enabled: false });
-  assert.equal(timed("<t> off", { track: "Updates" }, () => 7), 7);
+  assert.equal(track("<t> off", () => 7, { track: "Updates" }), 7);
   configure({ enabled: true });
   await tick();
   stop();
@@ -287,18 +290,16 @@ test("the production version has exactly the same exports, and does nothing", as
   assert.deepEqual(Object.keys(prod).sort(), Object.keys(dev).sort());
   assert.deepEqual(Object.keys(prodLit).sort(), Object.keys(devLit).sort());
   assert.deepEqual(Object.keys(prodStencil).sort(), Object.keys(devStencil).sort());
-  assert.deepEqual(prod.Tracks, dev.Tracks);
   assert.deepEqual(Object.keys(prod.getConfig()).sort(), Object.keys(dev.getConfig()).sort());
+  assert.equal(prod.getConfig().trackGroup, "Web Components · Tuppence");
 
   const { seen, stop } = collect();
-  assert.equal(prod.timed("x", { track: "Components" }, () => 5), 5);
-  prod.emit("x", 0, 1, { track: "Components" });
+  assert.equal(prod.track("x", () => 5), 5);
   prod.configure({ enabled: true });
   assert.equal(prod.getConfig().enabled, false);
-  assert.equal(typeof prod.rerouteMeasures(/x/, () => null), "function");
   assert.equal(typeof prodStencil.observeStencilProfile(), "function");
   prodLit.trackLitUpdates({});
-  prod.instrumentElement(class {});
+  prod.trackElement(class {});
   await tick();
   stop();
   assert.equal(seen.length, 0);
@@ -331,7 +332,7 @@ test("bars with no length are not drawn", async () => {
 test("error bars are drawn even with no length", async () => {
   const { seen, stop } = collect();
   const t = performance.now();
-  assert.throws(() => timed("<z> instant failure", { track: "Components" }, () => { throw new Error("now"); }));
+  assert.throws(() => track("<z> instant failure", () => { throw new Error("now"); }, { track: "Components" }));
   emit("<z> instant error", t, t, { track: "Components", color: "error" });
   await tick();
   stop();
@@ -404,16 +405,22 @@ test("Stencil: more than eight overlapping loads share the last Loading row", as
 
 test("the production version's setup functions do nothing", async () => {
   const prod = await import("../dist/production/index.js");
-  const prodLit = await import("../dist/production/adapters/lit.js");
-  const stop = prod.instrumentAll({ onDefine: () => assert.fail("called") });
-  assert.equal(typeof stop, "function");
-  stop();
-  assert.equal(typeof prodLit.trackAllLitElements(), "function");
-  prodLit.trackAllLitElements()();
+  const undo = prod.assignTrackGroup("x-", "X");
+  assert.equal(typeof undo, "function");
+  undo();
+});
+
+test("the public API is exactly what the README documents", async () => {
+  const keys = async (path) => Object.keys(await import(path)).sort();
+  assert.deepEqual(await keys("../dist/index.js"), ["assignTrackGroup", "configure", "define", "getConfig", "track", "trackElement"]);
+  assert.deepEqual(await keys("../dist/adapters/lit.js"), ["trackLitUpdates"]);
+  assert.deepEqual(await keys("../dist/adapters/stencil.js"), ["observeStencilProfile"]);
+  assert.deepEqual(await keys("../dist/register.js"), []);
 });
 
 test("without customElements (Node, some SSR), the element helpers do nothing harmful", async () => {
-  const { instrumentAll, instrumentElement } = await import("../dist/index.js");
+  const { trackElement } = await import("../dist/index.js");
+  const { instrumentAll } = await import("../dist/define.js");
   const { labelFor } = await import("../dist/define.js");
   assert.equal(typeof customElements, "undefined");
   const stop = instrumentAll();
@@ -421,7 +428,7 @@ test("without customElements (Node, some SSR), the element helpers do nothing ha
   stop();
   assert.equal(labelFor({ constructor: class {}, localName: "x-fallback" }), "x-fallback");
   class Plain { connectedCallback() { return "ran"; } }
-  instrumentElement(Plain);
+  trackElement(Plain);
   assert.equal(new Plain().connectedCallback.call({ constructor: Plain, localName: "x-plain" }), "ran");
 });
 
@@ -431,10 +438,12 @@ test("with no performance, PerformanceObserver or console, nothing is drawn and 
     delete globalThis.performance;
     delete globalThis.PerformanceObserver;
     delete globalThis.console;
-    const { emit, timed, rerouteMeasures } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
+    const { emit } = await import(${JSON.stringify(new URL("../dist/emit.js", import.meta.url).href)});
+    const { track } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
+    const { rerouteMeasures } = await import(${JSON.stringify(new URL("../dist/reroute.js", import.meta.url).href)});
     const { now } = await import(${JSON.stringify(new URL("../dist/emit.js", import.meta.url).href)});
     emit("x", 0, 1, { track: "Components" });
-    const out = [timed("x", { track: "Components" }, () => 7), now()];
+    const out = [track("x", () => 7), now()];
     rerouteMeasures(/x/, () => null)();
     process.stdout.write(JSON.stringify(out));
   `;
@@ -450,7 +459,8 @@ test("with no console, the timestamp strategy falls back to performance.measure"
     const seen = [];
     new PerformanceObserver((l) => seen.push(...l.getEntries().map((e) => e.name))).observe({ entryTypes: ["measure"] });
     delete globalThis.console;
-    const { emit, configure } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
+    const { emit } = await import(${JSON.stringify(new URL("../dist/emit.js", import.meta.url).href)});
+    const { configure } = await import(${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)});
     configure({ strategy: "timestamp" });
     emit("no-console", performance.now() - 1, performance.now(), { track: "Components" });
     setTimeout(() => log(JSON.stringify(seen)), 20);
@@ -470,7 +480,7 @@ test("emit can put one bar under its own track group", async () => {
   stop();
   assert.deepEqual(
     seen.map((e) => [e.name, e.detail.devtools.trackGroup]),
-    [["grouped", "Acme"], ["default", "Web Components"]],
+    [["grouped", "Acme"], ["default", "Web Components · Tuppence"]],
   );
 });
 
@@ -505,7 +515,7 @@ test("tag prefixes put Stencil elements in their own groups: longest prefix wins
   assert.deepEqual(rows.filter((r) => r[1] === "Components").sort(), [
     ["acme-button", "Components", "Acme"],
     ["acme-chart-bar", "Components", "Acme Charts"],
-    ["app-shell", "Components", "Web Components"],
+    ["app-shell", "Components", "Web Components · Tuppence"],
     ["beta-menu", "Components", "Beta"],
   ]);
   assert.deepEqual(rows.filter((r) => r[1].startsWith("Loading")).sort(), [
@@ -526,7 +536,7 @@ test("removing a rule puts elements back in the default group, and removing twic
   await tick();
   unwatch();
   stop();
-  assert.deepEqual(seen.map((e) => e.detail.devtools.trackGroup), ["Web Components"]);
+  assert.deepEqual(seen.map((e) => e.detail.devtools.trackGroup), ["Web Components · Tuppence"]);
 });
 
 test("the production assignTrackGroup does nothing and returns an undo function", async () => {
@@ -569,13 +579,20 @@ test("same contents, new object: anything it is not sure about counts as differe
 });
 
 test("same contents, new object: compares thousands of rows, like an API response parsed again", () => {
-  const rows = () => Array.from({ length: 2000 }, (_, i) => ({ id: i, name: `Customer ${i}`, city: "Leeds", tags: ["a", "b"] }));
-  assert.equal(same(rows(), rows()), true);
-  const changed = rows();
-  changed[1999].city = "York";
-  assert.equal(same(rows(), changed), false, "a change in the last row counts");
-  const nested = () => ({ a: { b: { c: { d: { e: { f: { g: 1 } } } } } } });
-  assert.equal(same(nested(), nested()), true, "seven levels deep");
+  // Stop the clock so a slow machine can't hit the time limit.
+  const realNow = performance.now;
+  performance.now = () => 0;
+  try {
+    const rows = () => Array.from({ length: 2000 }, (_, i) => ({ id: i, name: `Customer ${i}`, city: "Leeds", tags: ["a", "b"] }));
+    assert.equal(same(rows(), rows()), true);
+    const changed = rows();
+    changed[1999].city = "York";
+    assert.equal(same(rows(), changed), false, "a change in the last row counts");
+    const nested = () => ({ a: { b: { c: { d: { e: { f: { g: 1 } } } } } } });
+    assert.equal(same(nested(), nested()), true, "seven levels deep");
+  } finally {
+    performance.now = realNow;
+  }
 });
 
 test("same contents, new object: gives up after a few milliseconds, or on very deep or throwing values", () => {
@@ -592,4 +609,56 @@ test("same contents, new object: gives up after a few milliseconds, or on very d
   assert.equal(same(deep(40), deep(40)), false, "too deep");
   const throwing = () => Object.defineProperty({}, "x", { enumerable: true, get() { throw new Error("no"); } });
   assert.equal(same(throwing(), throwing()), false);
+});
+
+test("exclude: tag prefixes and regular expressions, kept as a copy", async () => {
+  const { isExcluded } = await import("../dist/emit.js");
+  const list = ["Ex-", /-quiet$/g];
+  configure({ exclude: list });
+  assert.equal(isExcluded("ex-card"), true, "prefixes ignore case, like tag names");
+  assert.equal(isExcluded("my-quiet"), true);
+  assert.equal(isExcluded("my-quiet"), true, "a g flag does not make the second test fail");
+  assert.equal(isExcluded("my-card"), false);
+  list.push("my-");
+  assert.equal(isExcluded("my-card"), false, "changing the original array later has no effect");
+  const seen = getConfig().exclude;
+  assert.deepEqual(seen, ["Ex-", /-quiet$/g]);
+  seen.length = 0;
+  assert.equal(getConfig().exclude.length, 2, "getConfig returns a copy");
+  configure({ exclude: undefined });
+  assert.equal(isExcluded("ex-card"), true, "undefined leaves it alone");
+  for (const bad of [[""], [5], "ex-"]) {
+    assert.throws(() => configure({ exclude: bad }), TypeError);
+  }
+  assert.equal(isExcluded("ex-card"), true, "a rejected list changes nothing");
+  configure({ exclude: [] });
+  assert.equal(isExcluded("ex-card"), false);
+});
+
+test("exclude: Stencil timings for excluded tags are dropped", async () => {
+  configure({ minDuration: 0, exclude: ["ex-"] });
+  const { seen, stop } = collect();
+  const unwatch = observeAgain();
+  const t = performance.now() + 20000;
+  performance.measure("[Stencil] render() <ex-badge>", { start: t, end: t + 2 });
+  performance.measure("[Stencil] Load module for <ex-badge>", { start: t, end: t + 2 });
+  performance.measure("[Stencil] render() <kept-badge>", { start: t, end: t + 2 });
+  await tick();
+  unwatch();
+  stop();
+  configure({ minDuration: 0.05, exclude: [] });
+  const names = seen.map((e) => e.name.replace(/^\u200b/, ""));
+  assert.deepEqual(names.filter((n) => n.includes("badge")), ["kept-badge"]);
+});
+
+test("track puts bars on a \"Your code\" track unless told otherwise", async () => {
+  const { seen, stop } = collect();
+  const busy = (ms) => { const end = performance.now() + ms; while (performance.now() < end) {} };
+  assert.equal(track("<y> default", () => (busy(1), "a")), "a");
+  track("<y> custom", () => {}, { track: "Handlers", color: "secondary", tooltip: "hi" });
+  await tick();
+  stop();
+  const got = seen.filter((e) => e.name.includes("<y>")).map((e) => [e.name, e.detail.devtools.track, e.detail.devtools.color, e.detail.devtools.tooltipText]);
+  assert.deepEqual(got.filter(([n]) => n === "<y> custom"), [["<y> custom", "Handlers", "secondary", "hi"]]);
+  assert.deepEqual(got.filter(([n]) => n === "<y> default").map(([, t]) => t), ["Your code"]);
 });

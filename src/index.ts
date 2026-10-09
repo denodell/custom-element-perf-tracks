@@ -1,23 +1,12 @@
 export {
   configure,
   getConfig,
-  emit,
-  timed,
-  Tracks,
+  track,
   type Config,
-  type ConsoleTask,
-  type EmitOptions,
   type Properties,
   type Strategy,
   type TrackColor,
+  type TrackOptions,
 } from "./emit.js";
-export {
-  definePerf,
-  instrumentAll,
-  instrumentElement,
-  type InstrumentAllOptions,
-  type InstrumentOptions,
-  type LifecycleCallback,
-} from "./define.js";
+export { define, trackElement, type LifecycleCallback, type TrackElementOptions } from "./define.js";
 export { assignTrackGroup } from "./groups.js";
-export { rerouteMeasures, type RerouteTarget } from "./reroute.js";

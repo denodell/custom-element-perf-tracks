@@ -22,7 +22,10 @@
 </script>
 <body>
 <script type="module">
-  import { configure, getConfig, definePerf, instrumentAll, instrumentElement, emit, assignTrackGroup } from "/dist/index.js";
+  import { configure, getConfig, define, trackElement, assignTrackGroup } from "/dist/index.js";
+  // Internal pieces, tested directly.
+  import { instrumentAll } from "/dist/define.js";
+  import { emit } from "/dist/emit.js";
   import { trackLitUpdates } from "/dist/adapters/lit.js";
   import { LitElement, html } from "lit";
 
@@ -83,7 +86,7 @@
 
     async lifecycleOnComponentsTrack() {
       class LcEl extends HTMLElement { connectedCallback() { work(1); } disconnectedCallback() { work(1); } }
-      definePerf("lc-el", LcEl);
+      define("lc-el", LcEl);
       const el = document.createElement("lc-el");
       const got = await collect(() => { document.body.append(el); el.remove(); });
       return on("Components", got).map((b) => [b.name, b.color]);
@@ -92,16 +95,16 @@
     async inheritanceBaseFirst() {
       class BaseA extends HTMLElement { connectedCallback() { work(1); } }
       class SubA extends BaseA { connectedCallback() { super.connectedCallback(); } }
-      definePerf("base-a", BaseA);
-      definePerf("sub-a", SubA);
+      define("base-a", BaseA);
+      define("sub-a", SubA);
       return names(on("Components", await collect(() => document.body.append(document.createElement("sub-a")))));
     },
 
     async inheritanceSubFirst() {
       class BaseB extends HTMLElement { connectedCallback() { work(1); } }
       class SubB extends BaseB {}
-      definePerf("sub-b", SubB);
-      definePerf("base-b", BaseB);
+      define("sub-b", SubB);
+      define("base-b", BaseB);
       return names(on("Components", await collect(() => {
         document.body.append(document.createElement("sub-b"));
         document.body.append(document.createElement("base-b"));
@@ -112,8 +115,8 @@
       configure({ minDuration: 2 });
       class Quick extends HTMLElement { connectedCallback() {} }
       class Slow extends HTMLElement { connectedCallback() { work(4); } }
-      definePerf("quick-el", Quick);
-      definePerf("slow-el", Slow);
+      define("quick-el", Quick);
+      define("slow-el", Slow);
       const got = await collect(() => {
         document.body.append(document.createElement("quick-el"));
         document.body.append(document.createElement("slow-el"));
@@ -127,7 +130,7 @@
       customElements.define("taken-el", class extends HTMLElement {});
       const before = Taken.prototype.connectedCallback;
       let threw = null;
-      try { definePerf("taken-el", Taken); } catch (e) { threw = e.name; }
+      try { define("taken-el", Taken); } catch (e) { threw = e.name; }
       return { threw, untouched: Taken.prototype.connectedCallback === before };
     },
 
@@ -138,14 +141,14 @@
       for (let i = 0; i < 3; i++) document.body.append(document.createElement("shadow-kid"));
       document.body.append(host);
       class ShadowKid extends HTMLElement { connectedCallback() {} }
-      const got = await collect(() => definePerf("shadow-kid", ShadowKid));
+      const got = await collect(() => define("shadow-kid", ShadowKid));
       const bar = on("Upgrade", got)[0];
       return { name: bar?.name, count: bar?.props["Elements upgraded"] };
     },
 
     async throwingCallback() {
       class Boom extends HTMLElement { connectedCallback() { throw new TypeError("kaboom"); } }
-      definePerf("boom-el", Boom);
+      define("boom-el", Boom);
       const el = new Boom();
       let message = null;
       const got = await collect(() => { try { el.connectedCallback(); } catch (e) { message = e.message; } });
@@ -154,7 +157,7 @@
 
     async attributeDiff() {
       class AttrEl extends HTMLElement { static observedAttributes = ["x"]; attributeChangedCallback() { work(0.3); } }
-      definePerf("attr-el", AttrEl);
+      define("attr-el", AttrEl);
       const el = document.createElement("attr-el");
       el.setAttribute("x", "1");
       const got = await collect(() => el.removeAttribute("x"));
@@ -167,7 +170,7 @@
       const warnings = [];
       const warn = console.warn;
       console.warn = (m) => warnings.push(String(m));
-      instrumentElement(Late);
+      trackElement(Late);
       console.warn = warn;
       return warnings.length;
     },
@@ -437,8 +440,8 @@
       class BadName extends HTMLElement { connectedCallback() {} }
       const before = BadName.prototype.connectedCallback;
       let threw = null;
-      try { definePerf("notvalid", BadName); } catch (e) { threw = e.name; }
-      return { threw, untouched: BadName.prototype.connectedCallback === before, canRetry: (() => { definePerf("now-valid", BadName); return true; })() };
+      try { define("notvalid", BadName); } catch (e) { threw = e.name; }
+      return { threw, untouched: BadName.prototype.connectedCallback === before, canRetry: (() => { define("now-valid", BadName); return true; })() };
     },
 
     async productionVersionWorks() {
@@ -454,7 +457,7 @@
       customElements.define("prod-lit", ProdLit);
       const lit = new ProdLit();
       const got = await collect(async () => {
-        prod.definePerf("prod-el", ProdEl);
+        prod.define("prod-el", ProdEl);
         document.body.append(document.createElement("prod-el"), lit);
         await lit.updateComplete;
       });
@@ -471,7 +474,7 @@
       class SubR extends BaseR {}
       const baseBefore = BaseR.prototype.connectedCallback;
       let threw = null;
-      try { definePerf("notvalidtoo", SubR); } catch (e) { threw = e.name; }
+      try { define("notvalidtoo", SubR); } catch (e) { threw = e.name; }
       return {
         threw,
         subHasOwn: Object.prototype.hasOwnProperty.call(SubR.prototype, "connectedCallback"),
@@ -482,7 +485,7 @@
     async turnedOffAfterDefining() {
       let calls = 0;
       class LateOff extends HTMLElement { connectedCallback() { calls++; work(1); } }
-      definePerf("late-off", LateOff);
+      define("late-off", LateOff);
       configure({ enabled: false });
       const got = await collect(() => document.body.append(document.createElement("late-off")));
       configure({ enabled: true });
@@ -495,7 +498,7 @@
         connectedCallback() { work(1); }
         attributeChangedCallback() { work(1); }
       }
-      instrumentElement(Picky, { callbacks: ["connectedCallback"] });
+      trackElement(Picky, { callbacks: ["connectedCallback"] });
       customElements.define("picky-el", Picky);
       const el = document.createElement("picky-el");
       const got = await collect(() => { document.body.append(el); el.setAttribute("x", "1"); });
@@ -579,8 +582,8 @@
       class PlainFancy extends HTMLButtonElement {}
       let fancy;
       const got = await collect(() => {
-        definePerf("fancy-button", FancyButton, { extends: "button" });
-        prod.definePerf("plain-fancy", PlainFancy, { extends: "button" });
+        define("fancy-button", FancyButton, { extends: "button" });
+        prod.define("plain-fancy", PlainFancy, { extends: "button" });
         fancy = document.createElement("button", { is: "fancy-button" });
         document.body.append(fancy);
       });
@@ -620,7 +623,7 @@
       configure({ enabled: false });
       class Off extends HTMLElement { connectedCallback() {} }
       const before = Off.prototype.connectedCallback;
-      definePerf("off-el", Off);
+      define("off-el", Off);
       class OffLit extends LitElement { constructor() { super(); trackLitUpdates(this); } }
       customElements.define("off-lit", OffLit);
       const el = new OffLit();
@@ -633,10 +636,10 @@
 
     async alreadyInstrumentedClassWithBadName() {
       class Twice extends HTMLElement { connectedCallback() {} }
-      instrumentElement(Twice);
+      trackElement(Twice);
       const patched = Twice.prototype.connectedCallback;
       let threw = null;
-      try { definePerf("Not Valid", Twice); } catch (e) { threw = e.name; }
+      try { define("Not Valid", Twice); } catch (e) { threw = e.name; }
       return { threw, stillInstrumented: Twice.prototype.connectedCallback === patched };
     },
 
@@ -644,10 +647,45 @@
       customElements.getName = undefined;
       try {
         class OldBrowser extends HTMLElement { connectedCallback() { work(0.5); } }
-        definePerf("old-browser", OldBrowser);
+        define("old-browser", OldBrowser);
         return names(on("Components", await collect(() => document.body.append(new OldBrowser()))));
       } finally {
         delete customElements.getName;
+      }
+    },
+
+    async excludeLeavesElementsOut() {
+      configure({ exclude: ["ex-", /-quiet$/] });
+      const hooked = [];
+      const stop = instrumentAll({ onDefine: (_c, name) => hooked.push(name) });
+      const ran = [];
+      class ExCard extends HTMLElement { connectedCallback() { work(0.5); ran.push(this.localName); } }
+      class ExAuto extends HTMLElement { connectedCallback() { work(0.5); ran.push(this.localName); } }
+      class ExManual extends HTMLElement { connectedCallback() { work(0.5); ran.push(this.localName); } }
+      class KeptEl extends HTMLElement { connectedCallback() { work(0.5); ran.push(this.localName); } }
+      class LitQuiet extends LitElement {
+        static properties = { v: { type: Number } };
+        constructor() { super(); this.v = 0; trackLitUpdates(this); }
+        render() { work(0.5); return html`${this.v}`; }
+      }
+      try {
+        const got = await collect(async () => {
+          define("ex-card", ExCard);
+          customElements.define("ex-auto", ExAuto);
+          trackElement(ExManual);
+          CustomElementRegistry.prototype.define.call(customElements, "ex-manual", ExManual);
+          customElements.define("lit-quiet", LitQuiet);
+          customElements.define("kept-el", KeptEl);
+          const quiet = new LitQuiet();
+          document.body.append(new ExCard(), new ExAuto(), new ExManual(), new KeptEl(), quiet);
+          await quiet.updateComplete;
+          quiet.v++;
+          await quiet.updateComplete;
+        });
+        return { bars: [...new Set(names(got))].sort(), ran, hooked };
+      } finally {
+        stop();
+        configure({ exclude: [] });
       }
     },
 
@@ -811,32 +849,35 @@
       };
     },
 
-    async litWastedRenders() {
+    async litNoChangeRenders() {
       class Thing {}
       class LitWaste extends LitElement {
-        static properties = { items: { type: Array }, options: { type: Object }, when: { type: Object }, label: { type: String } };
+        static properties = { items: { type: Array }, tags: { type: Array }, options: { type: Object }, when: { type: Object }, label: { type: String } };
         constructor() {
           super();
           this.items = [1, 2, 3];
+          this.tags = ["a"];
           this.options = { dense: true, sort: { by: "name" } };
           this.when = new Date(0);
           this.label = "a";
           trackLitUpdates(this);
         }
-        render() { work(0.3); return html`${this.items.length}${this.label}`; }
+        render() { work(this.quick ? 0.15 : 1); return html`${this.items.length}${this.label}`; }
       }
       customElements.define("lit-waste", LitWaste);
       const el = new LitWaste();
       const mount = await collect(async () => { document.body.append(el); await el.updateComplete; });
       const bar = async (fn) => {
         const got = await collect(async () => { fn(); await el.updateComplete; });
-        const b = on("Components", got).find((x) => x.name === "lit-waste" && !x.color.startsWith("secondary"));
-        return { color: b.color, wasted: b.props["Wasted render"] ?? null, same: b.props["Same contents, new object"] ?? null };
+        const b = on("Components", got).find((x) => x.name.startsWith("lit-waste") && !x.color.startsWith("secondary"));
+        return { name: b.name, color: b.color, noChanges: b.props["No changes"] ?? null, same: b.props["Same contents, new object"] ?? null, ms: b.duration };
       };
       const mountBar = on("Components", mount).find((x) => x.name === "lit-waste");
       return {
-        mount: mountBar.props["Wasted render"] ?? null,
+        mount: mountBar.props["No changes"] ?? null,
         newArray: await bar(() => { el.items = [1, 2, 3]; }),
+        quick: await bar(() => { el.quick = true; el.items = [1, 2, 3]; }).finally(() => { el.quick = false; }),
+        newArrays: await bar(() => { el.items = [1, 2, 3]; el.tags = ["a"]; }),
         newNested: await bar(() => { el.options = { sort: { by: "name" }, dense: true }; el.when = new Date(0); }),
         mixed: await bar(() => { el.items = [1, 2, 3]; el.label = "b"; }),
         realChange: await bar(() => { el.items = [1, 2, 3, 4]; }),
@@ -863,10 +904,10 @@
       document.body.append(...tags.map((t) => document.createElement(t)));
       const card = document.querySelector("ds-card");
       const got = await collect(async () => {
-        definePerf("ds-card", AcmeCard);
-        definePerf("beta-acme", BetaAcme);
-        definePerf("beta-tip", BetaTip);
-        definePerf("app-page", AppPage);
+        define("ds-card", AcmeCard);
+        define("beta-acme", BetaAcme);
+        define("beta-tip", BetaTip);
+        define("app-page", AppPage);
         await card.updateComplete;
       });
       undoClass();

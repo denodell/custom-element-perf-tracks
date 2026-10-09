@@ -44,18 +44,28 @@ for (const lit of ["3", "2"]) {
       assert.equal(result("timestampStrategyAddsNothingToBuffer"), 0);
     });
 
-    test("Lit: a render caused only by new objects with the same contents is marked as wasted", { skip }, () => {
-      const r = result("litWastedRenders");
-      assert.equal(r.mount, null, "the first render is never wasted");
-      const wasted = (same) => ({ color: "warning", wasted: "no property's contents changed", same });
-      assert.deepEqual(r.newArray, wasted("items"));
-      assert.deepEqual(r.newNested, wasted("options, when"));
-      assert.equal(r.mixed.wasted, null);
+    test("Lit: a render caused only by new objects with the same contents is marked as no changes", { skip }, () => {
+      const r = result("litNoChangeRenders");
+      assert.equal(r.mount, null, "the first render is never marked");
+      const noChanges = (text) => ({ name: "lit-waste (no changes)", color: "warning", noChanges: text, same: null });
+      const drop = ({ ms, ...rest }) => rest;
+      for (const k of ["newArray", "newArrays", "newNested"]) r[k] = drop(r[k]);
+      assert.deepEqual(r.newArray, noChanges("items was set to a new array with the same values"));
+      assert.deepEqual(r.newArrays, noChanges("items and tags were set to new arrays with the same values"));
+      assert.deepEqual(
+        r.newNested,
+        noChanges("options was set to a new object with the same values, and when to a new date with the same value"),
+      );
+      // Quick ones keep the name but stay blue; only slower ones turn yellow.
+      assert.equal(r.quick.name, "lit-waste (no changes)");
+      assert.equal(r.quick.color, r.quick.ms < 0.5 ? "primary-light" : "warning", `took ${r.quick.ms} ms`);
+      assert.equal(r.mixed.noChanges, null);
       assert.equal(r.mixed.same, "items");
+      assert.equal(r.mixed.name, "lit-waste");
       assert.notEqual(r.mixed.color, "warning");
-      assert.deepEqual([r.realChange.wasted, r.realChange.same], [null, null]);
-      assert.deepEqual([r.classInstances.wasted, r.classInstances.same], [null, null]);
-      assert.equal(r.withRequestUpdate.wasted, null);
+      assert.deepEqual([r.realChange.noChanges, r.realChange.same], [null, null]);
+      assert.deepEqual([r.classInstances.noChanges, r.classInstances.same], [null, null]);
+      assert.equal(r.withRequestUpdate.noChanges, null);
       assert.equal(r.withRequestUpdate.same, "items");
     });
 
@@ -74,9 +84,9 @@ for (const lit of ["3", "2"]) {
       }
       assert.equal(r["Upgrade: beta-tip define"], "Beta");
       assert.equal(r["Components: beta-tip connected"], "Beta");
-      assert.equal(r["Upgrade: app-page define"], "Web Components");
-      assert.equal(r["Components: app-page connected"], "Web Components");
-      assert.equal(r.afterRemoving, "Web Components");
+      assert.equal(r["Upgrade: app-page define"], "Web Components · Tuppence");
+      assert.equal(r["Components: app-page connected"], "Web Components · Tuppence");
+      assert.equal(r.afterRemoving, "Web Components · Tuppence");
     });
 
     test("lifecycle callbacks go on the Components track, mount/unmount in React's warning color", { skip }, () => {
@@ -250,6 +260,14 @@ for (const lit of ["3", "2"]) {
       assert.deepEqual(result("noGetName"), ["old-browser connected"]);
     });
 
+    test("exclude leaves matching elements out completely, however they are tracked", { skip }, () => {
+      const r = result("excludeLeavesElementsOut");
+      assert.ok(r.bars.includes("kept-el connected"), JSON.stringify(r.bars));
+      assert.deepEqual(r.bars.filter((n) => /ex-|quiet|Render|Commit|Update|Event/.test(n)), [], "nothing for excluded elements");
+      assert.deepEqual(r.ran, ["ex-card", "ex-auto", "ex-manual", "kept-el"], "the elements still work");
+      assert.deepEqual(r.hooked, ["kept-el"], "excluded Lit classes are never set up for tracking");
+    });
+
     test("instrumentAll: broken hooks, other registries, double stops and other wrappers", { skip }, () => {
       assert.deepEqual(result("instrumentAllEdgeCases"), {
         defined: true,
@@ -312,7 +330,7 @@ for (const lit of ["3", "2"]) {
       assert.deepEqual(result("turnedOffAfterDefining"), { calls: 1, bars: 0 });
     });
 
-    test("instrumentElement's callbacks option times only those callbacks", { skip }, () => {
+    test("trackElement's callbacks option times only those callbacks", { skip }, () => {
       assert.deepEqual(result("onlyChosenCallbacks"), ["picky-el connected"]);
     });
 
@@ -415,7 +433,7 @@ for (const lit of ["3", "2"]) {
       assert.deepEqual(result("subclassesTrackedOnce"), ["auto-sub"]);
     });
 
-    test("definePerf still works, without doubling bars", { skip }, () => {
+    test("define still works, without doubling bars", { skip }, () => {
       const r = result("definePerfIsNotDoubled");
       assert.ok(r.upgrade.length <= 1, r.upgrade.join());
       assert.deepEqual(r.components, ["auto-explicit connected"]);
