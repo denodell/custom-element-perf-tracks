@@ -133,6 +133,38 @@ observeStencilProfile();
 
 Stencil times rendering and DOM updates together, so each update shows as a single **Render and Commit** bar. A **Loading** track shows the app starting up and each component's code loading.
 
+### Publishing a Stencil design system
+
+A normal `stencil build` leaves Stencil's timings out, so apps using your published package see only the lifecycle bars. You can publish a second build with the timings in, and point development tools at it with the `"development"` [export condition](https://nodejs.org/api/packages.html#conditional-exports):
+
+```js
+// stencil.profile.config.ts: your normal config, built into its own folder
+import { config as base } from "./stencil.config";
+
+export const config = {
+  ...base,
+  outputTargets: base.outputTargets.map((target) => ({ ...target, dir: "components-profile" })),
+};
+```
+
+```sh
+stencil build
+stencil build --prod --profile --config stencil.profile.config.ts
+```
+
+```json
+"exports": {
+  ".": {
+    "types": "./components/index.d.ts",
+    "development": "./components-profile/index.js",
+    "default": "./components/index.js"
+  }
+},
+"files": ["components", "components-profile"]
+```
+
+Vite and webpack pick the profile build in development and the normal one in production. Apps that call `observeStencilProfile()` then see your components' renders by name.
+
 ## Production builds
 
 The package includes an empty version with the same API. Bundlers pick it for production builds:
