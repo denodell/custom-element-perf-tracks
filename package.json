@@ -9,6 +9,10 @@
     "type": "git",
     "url": "git+https://github.com/denodell/tuppence.git"
   },
+  "homepage": "https://github.com/denodell/tuppence#readme",
+  "bugs": {
+    "url": "https://github.com/denodell/tuppence/issues"
+  },
   "keywords": [
     "web-components",
     "custom-elements",
@@ -58,7 +62,8 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "demo": "npm run build && npx --yes serve -l 5173 .",
     "demo:design-system": "npm run build && vite --config demo/design-system/vite.config.js",
-    "coverage": "npm run build && rm -rf coverage && COVERAGE_DIR=coverage/tmp NODE_V8_COVERAGE=coverage/tmp node --test test/*.test.mjs && c8 report --temp-directory coverage/tmp --report-dir coverage --include 'dist/**' --reporter text --reporter html"
+    "coverage": "npm run build && rm -rf coverage && COVERAGE_DIR=coverage/tmp NODE_V8_COVERAGE=coverage/tmp node --test test/*.test.mjs && c8 report --temp-directory coverage/tmp --report-dir coverage --include 'dist/**' --reporter text --reporter html",
+    "prepublishOnly": "npm test"
   },
   "peerDependencies": {
     "lit": ">=2 <4"
