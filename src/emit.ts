@@ -22,6 +22,11 @@ export interface Config {
   strategy: Strategy;
   /** Callbacks shorter than this many milliseconds are left undrawn. */
   minDuration: number;
+  /**
+   * Elements to leave out completely. A string matches the start of a tag name,
+   * like "sp-icon-". A regular expression is tested against the whole tag name.
+   */
+  exclude: ReadonlyArray<string | RegExp>;
 }
 
 const config: Config = {
@@ -29,18 +34,42 @@ const config: Config = {
   trackGroup: "Web Components · Tuppence",
   strategy: "auto",
   minDuration: 0.05,
+  exclude: [],
 };
+
+let excluded: Array<(tag: string) => boolean> = [];
 
 /** Changes settings. Keys set to `undefined` are ignored. */
 export function configure(options: Partial<Config>): void {
+  if (options.exclude !== undefined) excluded = compileExclude(options.exclude);
   for (const [key, value] of Object.entries(options)) {
     if (value !== undefined) (config as unknown as Record<string, unknown>)[key] = value;
   }
+  if (options.exclude !== undefined) config.exclude = [...options.exclude];
+}
+
+function compileExclude(list: ReadonlyArray<string | RegExp>): Array<(tag: string) => boolean> {
+  if (!Array.isArray(list)) throw new TypeError("configure: exclude must be an array");
+  return list.map((item) => {
+    if (typeof item === "string" && item !== "") {
+      const prefix = item.toLowerCase();
+      return (tag: string) => tag.startsWith(prefix);
+    }
+    if (item instanceof RegExp) {
+      const re = new RegExp(item.source, item.flags.replace(/[gy]/g, ""));
+      return (tag: string) => re.test(tag);
+    }
+    throw new TypeError("configure: exclude entries must be tag prefixes or regular expressions");
+  });
 }
 
 /** Returns a copy of the current settings. */
 export function getConfig(): Readonly<Config> {
-  return { ...config };
+  return { ...config, exclude: [...config.exclude] };
+}
+
+export function isExcluded(tag: string): boolean {
+  return excluded.length > 0 && excluded.some((match) => match(tag));
 }
 
 export function isEnabled(): boolean {

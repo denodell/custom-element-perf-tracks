@@ -4,6 +4,7 @@ import {
   Tracks,
   emit,
   isEnabled,
+  isExcluded,
   minDuration,
   now,
   preview,
@@ -85,7 +86,7 @@ function instrument(ctor: CustomElementConstructor, options: TrackElementOptions
 
     const wrapped = function (this: HTMLElement, ...args: unknown[]): unknown {
       const call = () => (original as (...a: unknown[]) => unknown).apply(this, args);
-      if (!isEnabled()) return call();
+      if (!isEnabled() || isExcluded(labelFor(this))) return call();
 
       let active = inProgress.get(this);
 // When a subclass and its base class are both wrapped, the outer wrapper draws the one bar.
@@ -166,6 +167,10 @@ export function define(
     defineNative(tagName, ctor, options);
     return;
   }
+  if (isExcluded(tagName)) {
+    defineNative(tagName, ctor, options);
+    return;
+  }
   const restore = instrument(ctor, options ?? {});
   if (!isEnabled()) {
     defineNative(tagName, ctor, options);
@@ -224,7 +229,7 @@ export function instrumentAll(options: InstrumentAllOptions = {}): () => void {
       ctor: CustomElementConstructor,
       opts?: ElementDefinitionOptions,
     ): void {
-      if (this !== registry) return previous.call(this, name, ctor, opts);
+      if (this !== registry || isExcluded(name)) return previous.call(this, name, ctor, opts);
       for (const h of defineHooks) {
         try {
           h(ctor, name);

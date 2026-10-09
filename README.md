@@ -151,11 +151,14 @@ configure({
   trackGroup: "My App",   // rename the group in DevTools
   minDuration: 0,         // draw even the shortest callbacks (default 0.05 ms)
   strategy: "timestamp",  // lighter bars, name and color only
+  exclude: ["sp-icon-", /-skeleton$/], // leave these elements out
   enabled: false,         // turn it off completely
 });
 ```
 
 Call `configure` before your elements are defined. `getConfig()` returns the current settings.
+
+`exclude` leaves out elements you don't need to see, such as icons. A string matches the start of a tag name, and a regular expression is tested against the whole name. Excluded elements get no bars at all.
 
 `strategy` controls how bars are drawn:
 

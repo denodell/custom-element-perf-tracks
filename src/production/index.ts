@@ -14,7 +14,7 @@ export type {
 export function configure(_options: Partial<Config>): void {}
 
 export function getConfig(): Readonly<Config> {
-  return { enabled: false, trackGroup: "Web Components · Tuppence", strategy: "auto", minDuration: 0.05 };
+  return { enabled: false, trackGroup: "Web Components · Tuppence", strategy: "auto", minDuration: 0.05, exclude: [] };
 }
 
 export function timed<T>(_name: string, _options: EmitOptions, fn: () => T): T {
