@@ -26,7 +26,7 @@ export interface Config {
 
 const config: Config = {
   enabled: true,
-  trackGroup: "Web Components",
+  trackGroup: "Web Components · Tuppence",
   strategy: "auto",
   minDuration: 0.05,
 };

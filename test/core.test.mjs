@@ -31,7 +31,7 @@ test("emit writes a DevTools track entry", async () => {
   assert.equal(seen.length, 1);
   assert.deepEqual(seen[0].detail.devtools, {
     dataType: "track-entry",
-    trackGroup: "Web Components",
+    trackGroup: "Web Components · Tuppence",
     track: "Updates",
     color: "secondary",
     properties: [["k", "v"]],
@@ -66,9 +66,9 @@ test("auto strategy: details go through a measure that is cleared, under an invi
 
 test("configure ignores undefined and getConfig returns a copy", () => {
   configure({ trackGroup: undefined });
-  assert.equal(getConfig().trackGroup, "Web Components");
+  assert.equal(getConfig().trackGroup, "Web Components · Tuppence");
   getConfig().trackGroup = "changed";
-  assert.equal(getConfig().trackGroup, "Web Components");
+  assert.equal(getConfig().trackGroup, "Web Components · Tuppence");
 });
 
 test("timed returns the value, rethrows the error, and colours failures", async () => {
@@ -120,7 +120,7 @@ test("rerouted output is never copied again, even if the group is renamed", asyn
   performance.measure("<loop> start", { start: 0, end: 1 });
   configure({ trackGroup: "Renamed" });
   await tick();
-  configure({ trackGroup: "Web Components" });
+  configure({ trackGroup: "Web Components · Tuppence" });
   await tick();
   unwatch();
   stop();
@@ -470,7 +470,7 @@ test("emit can put one bar under its own track group", async () => {
   stop();
   assert.deepEqual(
     seen.map((e) => [e.name, e.detail.devtools.trackGroup]),
-    [["grouped", "Acme"], ["default", "Web Components"]],
+    [["grouped", "Acme"], ["default", "Web Components · Tuppence"]],
   );
 });
 
@@ -505,7 +505,7 @@ test("tag prefixes put Stencil elements in their own groups: longest prefix wins
   assert.deepEqual(rows.filter((r) => r[1] === "Components").sort(), [
     ["acme-button", "Components", "Acme"],
     ["acme-chart-bar", "Components", "Acme Charts"],
-    ["app-shell", "Components", "Web Components"],
+    ["app-shell", "Components", "Web Components · Tuppence"],
     ["beta-menu", "Components", "Beta"],
   ]);
   assert.deepEqual(rows.filter((r) => r[1].startsWith("Loading")).sort(), [
@@ -526,7 +526,7 @@ test("removing a rule puts elements back in the default group, and removing twic
   await tick();
   unwatch();
   stop();
-  assert.deepEqual(seen.map((e) => e.detail.devtools.trackGroup), ["Web Components"]);
+  assert.deepEqual(seen.map((e) => e.detail.devtools.trackGroup), ["Web Components · Tuppence"]);
 });
 
 test("the production assignTrackGroup does nothing and returns an undo function", async () => {
