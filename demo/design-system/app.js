@@ -32,7 +32,7 @@ function App() {
       h("b", null, "Add to cart"),
       " a few times, then stop. Open the ",
       h("b", null, "Acme Design System"),
-      " group: each table render is yellow, marked as a wasted render, because the app passes a new ",
+      " group: each table render is yellow and marked \"no changes\", because the app passes a new ",
       h("code", null, "columns"),
       " array every time.",
     ),

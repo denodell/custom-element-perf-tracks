@@ -1,4 +1,4 @@
-import { Tracks, defaultTrackGroup, effectColor, minDuration, renderColor } from "../emit.js";
+import { Tracks, defaultTrackGroup, effectColor, isExcluded, minDuration, renderColor } from "../emit.js";
 import { rerouteMeasures } from "../reroute.js";
 import { groupFor } from "../groups.js";
 
@@ -17,7 +17,7 @@ export function observeStencilProfile(): () => void {
 
   const disconnect = rerouteMeasures(/^\[Stencil\] (\w+)\(\) <([^>]*)>$/, (match, entry) => {
     const [, fn, tag] = match;
-    if (!tag) return null;
+    if (!tag || isExcluded(tag)) return null;
     const ms = entry.duration;
     const trackGroup = stencilGroup(tag);
 
@@ -45,6 +45,7 @@ export function observeStencilProfile(): () => void {
     /^\[Stencil\] (?:Load module for <([^>]+)>|(.+ initial load \(by [^)]+\)))$/,
     (match, entry) => {
       const [, tag, appLoad] = match;
+      if (tag && isExcluded(tag)) return null;
       const start = entry.startTime;
       const end = start + entry.duration;
       const trackGroup = tag ? stencilGroup(tag) : defaultTrackGroup();
